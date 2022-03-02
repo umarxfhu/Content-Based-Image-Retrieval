@@ -91,7 +91,7 @@ class Dataset:
 
         return
 
-    def generate_clusters(self, n_neighbors):
+    def generate_clusters(self, n_neighbors, min_dist, min_cluster_size, min_samples):
         """Clusters the input feature vectors and returns embeddings + labels.
         - [INPUTS]:
             - features: List of vertically stacked feature vectors with shape [[n,],].
@@ -104,21 +104,16 @@ class Dataset:
         - [ALGORITHMS]:
             - [UMAP]: To reduce feature dimensionality to create embeddings.
             - [HDBSCAN]: To cluster feature embeddings."""
-
-        print(
-            f"[INFO][STARTED]: Dimensionality reduction... this could take a few minutes."
-        )
-        self.embeddings = self.setup_umap(n_neighbors)
-        print(f"[INFO][DONE]: Dimensionality reduction.")
+        self.embeddings = self.setup_umap(n_neighbors, min_dist)
         print(f"[INFO][STARTED]: Clustering with HDBSCAN.")
         self.labels = hdbscan.HDBSCAN(
-            min_samples=10,
-            min_cluster_size=250,
+            min_samples=min_samples,
+            min_cluster_size=min_cluster_size,
         ).fit_predict(self.embeddings)
         print(f"[INFO][DONE]: Clustering with HDBSCAN.")
         return
 
-    def setup_umap(self, n_neighbors, n_components=3):
+    def setup_umap(self, n_neighbors, min_dist, n_components=3):
         """Returns UMAP feature embeddings with specified number of components
         Outputs:
             - embeddings: coordinates of each vector (image), shape can be
@@ -129,9 +124,11 @@ class Dataset:
             - n_components: Number of dimensions to reduce to, default is 3."""
 
         # create names for the uploaded files' potential resources
-        embeddings_pickle = (
-            f"{self.name}_umap_{n_components}D_embeddings_{n_neighbors}.pickle"
-        )
+        if isinstance(min_dist, int):
+            min_dist_str = str(min_dist)
+        else:
+            min_dist_str = str(min_dist).split(".")[1]
+        embeddings_pickle = f"{self.name}_umap_{n_components}D_embeddings_{n_neighbors}_{min_dist_str}.pickle"
         # create paths to these resource files
         path_to_embeddings_pickle = os.path.join(
             config["resources_dir"], embeddings_pickle
@@ -142,9 +139,12 @@ class Dataset:
             with open(path_to_embeddings_pickle, "rb") as f:
                 embeddings = pickle.load(f)
         else:
+            print(
+                f"[INFO][STARTED]: Dimensionality reduction... this could take a few minutes."
+            )
             embeddings = UMAP(
                 n_neighbors=n_neighbors,
-                min_dist=0.00,
+                min_dist=min_dist,
                 n_components=n_components,
                 metric="correlation",
                 random_state=24,
@@ -152,6 +152,7 @@ class Dataset:
                 verbose=True,
             ).fit_transform(self.features)
             pickle.dump(embeddings, open(path_to_embeddings_pickle, "wb"))
+            print(f"[INFO][DONE]: Dimensionality reduction.")
 
         return embeddings
 

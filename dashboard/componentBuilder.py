@@ -56,7 +56,7 @@ def create_LR_label(id, leftText, rightText):
             html.P(
                 children=[rightText],
                 style={
-                    "textAlign": "center",
+                    "textAlign": "right",
                     "width": "50%",
                     "display": "inline-block",
                 },

@@ -13,11 +13,15 @@ def blankFig():
     return fig
 
 
-def generate_fig_3D(data: Dataset, slider_value):
+def generate_fig_3D(
+    data: Dataset, n_neighbors_value, min_dist_value, min_cluster_size, min_samples
+):
     """inputs: data: dictionary with features and image paths
     outputs: scatterPlot: plotly express 3D object with updates"""
 
-    data.generate_clusters(slider_value)
+    data.generate_clusters(
+        n_neighbors_value, min_dist_value, min_cluster_size, min_samples
+    )
     # Create 3D scatter plot to visualize
     scatterPlot = px.scatter_3d(
         data.embeddings,
