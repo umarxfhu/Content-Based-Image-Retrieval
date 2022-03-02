@@ -272,25 +272,31 @@ def uploadData(content, filename):
         Output("dataClusteredFlag", "data"),
         Output("dataInfo", "children"),
         Output("graph2DButton", "disabled"),
+        Output("graph3DButton", "disabled"),
     ],
-    [Input("n_neighbors_slider", "value"), Input("dataProcessedFlag", "data")],
+    [Input("dataProcessedFlag", "data"), Input("graph3DButton", "n_clicks")],
+    [State("n_neighbors_slider", "value")],
 )
-def update_output(value, dataProcessedFlag):
+def update_output(dataProcessedFlag, n_clicks, n_neighbors_value):
     if dataProcessedFlag:
-        # Generate the plotly express 3dscatter plot and save the
-        # embeddings and cluster labels in a global variable
-        figure = generate_fig_3D(dataset_obj, value)
-        # Output Clustering statistics
-        percentClustered = dataset_obj.calculate_percent_clustered()
-        output_text = create_LR_label(
-            id="percentClusteredText",
-            leftText="[INFO]:",
-            rightText=f"{percentClustered}% clustered",
-        )
-        dataset_obj.create_clusters_zip()
-        return figure, [True], output_text, False
+        # After feature extraction, enable 3D graph gen button
+        if n_clicks == 0:
+            return no_update, no_update, no_update, no_update, False
+        else:
+            # Generate the 3D graph and update global variable
+            figure = generate_fig_3D(dataset_obj, n_neighbors_value)
+            # Output Clustering statistics
+            percentClustered = dataset_obj.calculate_percent_clustered()
+            output_text = create_LR_label(
+                id="percentClusteredText",
+                leftText="[INFO]:",
+                rightText=f"{percentClustered}% clustered",
+            )
+            # arrange zip files to create download
+            dataset_obj.create_clusters_zip()
+            return figure, [True], output_text, False, no_update
     else:
-        return no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update
 
 
 ########################################################################

@@ -196,7 +196,7 @@ class Dataset:
             clusters_dict["cluster_%s" % i] = subFrame["imgPath"].tolist()
 
         # [TODO]: Extract assets/clusters to config file
-        cluster_dir = os.path.join(config["assets"], "clusters")
+        cluster_dir = config["clusters_dir"]
 
         # Remove pre-existing cluster directory
         if not os.path.exists(cluster_dir):
@@ -220,8 +220,12 @@ class Dataset:
 
     def reset_dataset(self):
         new_dataset_obj = Dataset()
-        shutil.rmtree(config["unzipped_dir"])
-        os.mkdir(config["unzipped_dir"])
+        # if the
+        if not os.path.exists(config["unzipped_dir"]):
+            os.makedirs(config["unzipped_dir"])
+        else:
+            shutil.rmtree(config["unzipped_dir"])
+            os.makedirs(config["unzipped_dir"])
         return new_dataset_obj
 
     def gen_img_uri(self, img_index) -> str:
