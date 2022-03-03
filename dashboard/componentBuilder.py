@@ -1,5 +1,7 @@
 from dash import html
+from numpy import place
 from dataset import Dataset
+import dash_bootstrap_components as dbc
 
 # Only certain component building functions are here
 
@@ -37,7 +39,24 @@ def gen_img_preview(dataset_obj: Dataset, selected_img_idxs):
     return imagesList
 
 
-def create_LR_label(id, leftText, rightText):
+def gen_download_button(id: str, children: "list[str]", href: str):
+    return dbc.Button(
+        children=children,
+        id=id,
+        download="example.jpg",
+        n_clicks=0,
+        disabled=True,
+        external_link=True,
+        color="primary",
+        href=href,
+    )
+
+
+def update_preview_button(dataset_obj: Dataset, selected_img_idxs):
+    pass
+
+
+def create_LR_label(id, leftText, rightText, tip_text_left=None, tip_text_right=None):
     """Insert an html.Div with text on one line with left and right
     justified portions.
     inputs:
@@ -46,15 +65,50 @@ def create_LR_label(id, leftText, rightText):
         - rightText: (type: string) Right justified text
     output:
         - html.Div component object"""
+
+    if tip_text_left:
+        left_children = [
+            leftText,
+            dbc.Tooltip(
+                tip_text_left,
+                target=f"{id}_left",
+                style={
+                    "border-radius": "10px",
+                    "background": "#282828",
+                    "border": "2px solid #FFFFFF",
+                },
+            ),
+        ]
+    else:
+        left_children = [leftText]
+
+    if tip_text_right:
+        right_children = [
+            rightText,
+            dbc.Tooltip(
+                tip_text_right,
+                target=f"{id}_right",
+                style={
+                    "border-radius": "10px",
+                    "background": "#282828",
+                    "border": "2px solid #FFFFFF",
+                },
+            ),
+        ]
+    else:
+        right_children = [rightText]
+
     label = html.Div(
         id=id,
         children=[
             html.P(
-                children=[leftText],
+                id=f"{id}_left",
+                children=left_children,
                 style={"textAlign": "left", "width": "49%", "display": "inline-block"},
             ),
             html.P(
-                children=[rightText],
+                id=f"{id}_right",
+                children=right_children,
                 style={
                     "textAlign": "right",
                     "width": "50%",
@@ -63,4 +117,5 @@ def create_LR_label(id, leftText, rightText):
             ),
         ],
     )
+
     return label

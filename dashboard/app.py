@@ -4,8 +4,8 @@ from dash import html, dcc, no_update
 from dash.dependencies import Input, Output, State
 
 from dataset import Dataset
-from componentBuilder import create_LR_label, gen_img_preview
 from figureGen import blankFig, generate_fig_3D, generate_fig_2D
+from componentBuilder import create_LR_label, gen_img_preview, gen_download_button
 
 ################################################################################
 """ Global variables: """
@@ -34,7 +34,6 @@ title = html.H4(
     "Dataset Clustering Dashboard",
     style={"color": "white", "text-align": "center", "padding": "10px"},
 )
-
 
 fileInfo = dcc.Loading(
     id="fileInfo",
@@ -70,14 +69,16 @@ graph2D = dcc.Graph(
     loading_state={"is_loading": True},
 )
 
-downloadClustersButton = dbc.Button(
+download_clusters_button = gen_download_button(
+    id="download_clusters_button",
     children=["Download Clusters"],
-    id="downloadClustersButton",
-    download="example.jpg",
-    n_clicks=0,
-    disabled=True,
-    external_link=True,
-    color="primary",
+    href=app.get_asset_url("clusters.zip"),
+)
+
+download_preview_button = gen_download_button(
+    id="download_preview_button",
+    children=["Download"],
+    href=app.get_asset_url("preview_2D.zip"),
 )
 
 graph3DButton = dbc.Button(
@@ -117,21 +118,63 @@ imagePreview = html.Div(
     },
 )
 
+n_neighbors_left_text = (
+    "This parameter controls how UMAP balances local versus global structure in the data. "
+    "As n_neighbors is increased UMAP manages to see more of the overall "
+    "structure of the data, gluing more components together, and better coverying "
+    "the broader structure of the data. As n_neighbors increases further more and "
+    "more focus in placed on the overall structure of the data. This results in, "
+    "a plot where the overall structure is well captured, but at the loss of some of "
+    "the finer local structure (individual images may no longer necessarily be "
+    "immediately next to their closest match)."
+)
 n_neighbors_slider = [
     create_LR_label(
-        id="n_neighbors_label", leftText="[UMAP]:", rightText="n_neighbors"
+        id="n_neighbors_label",
+        leftText="[UMAP]:",
+        rightText="n_neighbors",
+        tip_text_left=(
+            "Uniform Manifold Approximation and Projection (UMAP) is a "
+            "dimension reduction technique used here to allow visualisation."
+        ),
+        tip_text_right=n_neighbors_left_text,
     ),
     dcc.Slider(min=40, max=240, step=40, value=80, id="n_neighbors_slider"),
 ]
-
+min_dist_left_text = (
+    "The min_dist parameter controls how tightly UMAP is allowed to pack points "
+    "together. It, quite literally, provides the minimum distance apart that points "
+    "are allowed to be in the low dimensional representation. This means that low "
+    "values of min_dist will result in clumpier embeddings. This can be useful if "
+    "you are interested in clustering, or in finer topological structure. Larger "
+    "values of min_dist will prevent UMAP from packing points together and will "
+    "focus on the preservation of the broad topological structure instead."
+)
 min_dist_slider = [
-    create_LR_label(id="min_dist_label", leftText="[UMAP]:", rightText="min_dist"),
+    create_LR_label(
+        id="min_dist_label",
+        leftText="[UMAP]:",
+        rightText="min_dist",
+        tip_text_left=(
+            "Uniform Manifold Approximation and Projection (UMAP) is a "
+            "dimension reduction technique used here to allow visualisation."
+        ),
+        tip_text_right=min_dist_left_text,
+    ),
     dcc.Slider(min=0.0, max=0.5, step=0.1, value=0.0, id="min_dist_slider"),
 ]
 
+min_cluster_size_left_text = (
+    "Set it to the smallest size grouping that you wish to consider a cluster. "
+    "It can have slightly non-obvious effects however (unless you fix min_samples)."
+)
 min_cluster_size_slider = [
     create_LR_label(
-        id="min_cluster_size_label", leftText="[HDBSCAN]:", rightText="min_cluster_size"
+        id="min_cluster_size_label",
+        leftText="[HDBSCAN]:",
+        rightText="min_cluster_size",
+        tip_text_left="Hierarchical Density-Based Spatial Clustering of Applications with Noise.",
+        tip_text_right=min_cluster_size_left_text,
     ),
     dcc.Slider(
         min=20,
@@ -144,9 +187,21 @@ min_cluster_size_slider = [
     ),
 ]
 
+min_samples_left_text = (
+    "The simplest intuition for what min_samples does is provide a measure of how "
+    "conservative you want you clustering to be. The larger the value of min_samples "
+    "you provide, the more conservative the clustering - more points will be "
+    "declared as noise, and clusters will be restricted to progressively more "
+    "dense areas. Steadily increasing min_samples will, as we saw in the examples "
+    "above, make the clustering progressively more conservative."
+)
 min_samples_slider = [
     create_LR_label(
-        id="min_samples_label", leftText="[HDBSCAN]:", rightText="min_samples"
+        id="min_samples_label",
+        leftText="[HDBSCAN]:",
+        rightText="min_samples",
+        tip_text_left="Hierarchical Density-Based Spatial Clustering of Applications with Noise.",
+        tip_text_right=min_samples_left_text,
     ),
     dcc.Slider(
         min=1,
@@ -159,50 +214,14 @@ min_samples_slider = [
     ),
 ]
 
-# Tooltips for umap sliders
-n_neighbors_tooltip = dbc.Tooltip(
-    "This parameter controls how UMAP balances local versus global structure in the data. "
-    "As n_neighbors is increased UMAP manages to see more of the overall "
-    "structure of the data, gluing more components together, and better coverying "
-    "the broader structure of the data. As n_neighbors increases further more and "
-    "more focus in placed on the overall structure of the data. This results in, "
-    "a plot where the overall structure is well captured, but at the loss of some of "
-    "the finer local structure (individual images may no longer necessarily be "
-    "immediately next to their closest match).",
-    target="n_neighbors_label",
-)
-
-min_dist_tooltip = dbc.Tooltip(
-    "The min_dist parameter controls how tightly UMAP is allowed to pack points "
-    "together. It, quite literally, provides the minimum distance apart that points "
-    "are allowed to be in the low dimensional representation. This means that low "
-    "values of min_dist will result in clumpier embeddings. This can be useful if "
-    "you are interested in clustering, or in finer topological structure. Larger "
-    "values of min_dist will prevent UMAP from packing points together and will "
-    "focus on the preservation of the broad topological structure instead.",
-    target="min_dist_label",
-)
-
-min_cluster_size_tooltip = dbc.Tooltip(
-    "Set it to the smallest size grouping that you wish to consider a cluster. "
-    "It can have slightly non-obvious effects however (unless you fix min_samples).",
-    target="min_cluster_size_label",
-)
-
-min_samples_tooltip = dbc.Tooltip(
-    "The simplest intuition for what min_samples does is provide a measure of how "
-    "conservative you want you clustering to be. The larger the value of min_samples "
-    "you provide, the more conservative the clustering - more points will be "
-    "declared as noise, and clusters will be restricted to progressively more "
-    "dense areas. Steadily increasing min_samples will, as we saw in the examples "
-    "above, make the clustering progressively more conservative.",
-    target="min_samples_label",
-)
-
 # In browser storage objects
 dataProcessedFlagStore = dcc.Store(id="dataProcessedFlag", data=False)
 dataClusteredFlagStore = dcc.Store(id="dataClusteredFlag", data=False)
 
+card3DButtons = html.Div(
+    children=[html.Div(download_clusters_button), html.Div(graph3DButton)],
+    style={"display": "flex", "justify-content": "space-around"},
+)
 
 ################################################################################
 """ Dash UI Layout: """
@@ -212,10 +231,6 @@ app.layout = dbc.Container(
     [
         dataProcessedFlagStore,
         dataClusteredFlagStore,
-        n_neighbors_tooltip,
-        min_dist_tooltip,
-        min_cluster_size_tooltip,
-        min_samples_tooltip,
         dbc.Row(title),
         dbc.Row(
             [
@@ -235,13 +250,7 @@ app.layout = dbc.Container(
                                     dbc.Row(min_samples_slider),
                                     horz_line,
                                     dbc.Row(
-                                        [
-                                            dbc.Col(
-                                                downloadClustersButton,
-                                                width="auto",
-                                            ),
-                                            dbc.Col(graph3DButton, width="auto"),
-                                        ],
+                                        [card3DButtons],
                                         justify="center",
                                         align="center",
                                     ),
@@ -251,7 +260,7 @@ app.layout = dbc.Container(
                             ),
                         ],
                         body=True,
-                        style={"height": "80vh"},
+                        style={"height": "70vh"},
                     ),
                     md=3,
                     align="start",
@@ -264,7 +273,7 @@ app.layout = dbc.Container(
                                 dcc.Tooltip(id="mainGraphTooltip", direction="right"),
                                 dcc.Download(id="mainGraphDownload"),
                             ],
-                            style={"height": "80vh"},
+                            style={"height": "70vh"},
                         ),
                     ],
                     md=9,
@@ -280,14 +289,54 @@ app.layout = dbc.Container(
                     dcc.Tooltip(id="graph2DTooltip", direction="right"),
                     dcc.Download(id="graph2DDownload"),
                     horz_line,
-                    dbc.Row(dbc.Card([imagePreview], body=True), align="center"),
+                    dbc.Row(
+                        children=(
+                            dbc.Col(
+                                children=[
+                                    dbc.Card(
+                                        [
+                                            dbc.Row(
+                                                [
+                                                    dbc.Col(
+                                                        html.H5(
+                                                            "2D Graph Selection Preview",
+                                                            className="card-title",
+                                                            style={
+                                                                "textAlign": "left",
+                                                                "margin-left": "2%",
+                                                            },
+                                                        ),
+                                                        md=11,
+                                                    ),
+                                                    dbc.Col(
+                                                        [download_preview_button],
+                                                        style={"float": "right"},
+                                                        md=1,
+                                                    ),
+                                                ],
+                                                justify="center",
+                                                align="center",
+                                            ),
+                                            horz_line,
+                                            imagePreview,
+                                        ],
+                                        body=True,
+                                    ),
+                                ],
+                                width="auto",
+                                md=12,
+                            ),
+                        ),
+                        justify="center",
+                        align="center",
+                    ),
+                    horz_line,
                 ],
             ),
             style={"height": "50vh"},
             justify="center",
             align="center",
         ),
-        horz_line,
     ],
     fluid=True,
 )
@@ -325,7 +374,7 @@ def uploadData(content, filename):
 
 
 ########################################################################
-""" [CALLBACK]: Create 3D graph, n_neighbors umap slider """
+""" [CALLBACK]: Create 3D graph and update cluster download """
 ########################################################################
 @app.callback(
     [
@@ -333,6 +382,7 @@ def uploadData(content, filename):
         Output("dataClusteredFlag", "data"),
         Output("dataInfo", "children"),
         Output("graph3DButton", "disabled"),
+        Output("download_clusters_button", "disabled"),
     ],
     [Input("dataProcessedFlag", "data"), Input("graph3DButton", "n_clicks")],
     [
@@ -348,7 +398,7 @@ def update_output(
     if dataProcessedFlag:
         # After feature extraction, enable 3D graph gen button
         if n_clicks == 0:
-            return no_update, no_update, no_update, False
+            return no_update, no_update, no_update, False, no_update
         else:
             # Generate the 3D graph and update global variable
             figure = generate_fig_3D(
@@ -362,9 +412,9 @@ def update_output(
             )
             # arrange zip files to create download
             dataset_obj.create_clusters_zip()
-            return figure, [True], output_text, no_update
+            return figure, [True], output_text, no_update, False
     else:
-        return no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update
 
 
 ########################################################################
@@ -376,9 +426,7 @@ def update_output(
     [State("n_neighbors_slider", "value"), State("min_dist_slider", "value")],
 )
 def create_graph_2D(dataClusteredFlag, n_neighbors_value, min_dist_value):
-    print("dataClusteredFlag", dataClusteredFlag)
     if dataClusteredFlag:
-        print("got in line 340!")
         # Calculate UMAP embeddings with two components.
         embeddings_2D = dataset_obj.setup_umap(
             n_neighbors_value, min_dist_value, n_components=2
@@ -390,26 +438,6 @@ def create_graph_2D(dataClusteredFlag, n_neighbors_value, min_dist_value):
         return [fig]
     else:
         return no_update
-
-
-########################################################################
-""" [CALLBACK]: Download Clusters """
-########################################################################
-@app.callback(
-    [
-        Output("downloadClustersButton", "href"),
-        Output("downloadClustersButton", "disabled"),
-    ],
-    [Input("dataClusteredFlag", "data"), Input("downloadClustersButton", "n_clicks")],
-)
-def create_clusters(dataClusteredFlag, n_clicks):
-    if dataClusteredFlag:
-        filePath = "clusters.zip"
-        # return path to running assets folder, update the download button text,
-        # and enable the button to be clicked
-        return app.get_asset_url(filePath), False
-    else:
-        return no_update, no_update
 
 
 ########################################################################
@@ -506,23 +534,30 @@ def func(clickData):
 """ [CALLBACK]: 2D Lasso to preview"""
 ########################################################################
 @app.callback(
-    Output("imagePreview", "children"),
-    Input("graph2D", "selectedData"),
+    [
+        Output("imagePreview", "children"),
+        Output("download_preview_button", "disabled"),
+    ],
+    [Input("graph2D", "selectedData")],
     prevent_initial_call=True,
 )
 def display_selected_data(selectedData):
     """get all the selected point idx from the selectedData dictionary
     then get the img path for each idx, then create previwe with paths"""
-    ctx = dash.callback_context
+    if selectedData["points"]:
+        points = selectedData["points"]
+        selected_img_idxs = []
 
-    points = selectedData["points"]
-    selected_img_idxs = []
+        for i in range(len(points)):
+            idx = points[i]["pointNumber"]
+            selected_img_idxs.append(idx)
 
-    for i in range(len(points)):
-        idx = points[i]["pointNumber"]
-        selected_img_idxs.append(idx)
+        dataset_obj.prepare_preview_download(selected_img_idxs)
 
-    return gen_img_preview(dataset_obj, selected_img_idxs)
+        return gen_img_preview(dataset_obj, selected_img_idxs), False
+    else:
+        # no points selected
+        return no_update, no_update
 
 
 ################################################################################

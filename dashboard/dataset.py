@@ -166,15 +166,6 @@ class Dataset:
         return percent_clustered
 
     def create_clusters_zip(self):
-        def make_archive(source, destination):
-            base = os.path.basename(destination)
-            name = base.split(".")[0]
-            format = base.split(".")[1]
-            archive_from = os.path.dirname(source)
-            archive_to = os.path.basename(source.strip(os.sep))
-            shutil.make_archive(name, format, archive_from, archive_to)
-            shutil.move("%s.%s" % (name, format), destination)
-
         # Export clusters to folders
         imgs_with_clusters = [
             [self.labels[i], self.img_paths[i]] for i in range(len(self.labels))
@@ -191,7 +182,7 @@ class Dataset:
 
         cluster_noise = df[df["cluster"] == -1]["imgPath"].tolist()
         clusters_dict["cluster_noise"] = cluster_noise
-
+        # use set() to iterate over the number of unique classes minus the noise class
         for i in range(len(set(self.labels)) - 1):
             subFrame = df[df["cluster"] == i]
             clusters_dict["cluster_%s" % i] = subFrame["imgPath"].tolist()
@@ -216,8 +207,39 @@ class Dataset:
             # copy images from original location to new folder
             for path in clusters_dict[str(cluster)]:
                 shutil.copy(path, current_output_dir)
+        Dataset.make_archive(cluster_dir, cluster_dir + ".zip")
+        return
 
-        make_archive(cluster_dir, cluster_dir + ".zip")
+    @classmethod
+    def make_archive(cls, source, destination):
+        # used to take a folder and create a zip with it placed in the containing dir
+        base = os.path.basename(destination)
+        name = base.split(".")[0]
+        format = base.split(".")[1]
+        archive_from = os.path.dirname(source)
+        archive_to = os.path.basename(source.strip(os.sep))
+        shutil.make_archive(name, format, archive_from, archive_to)
+        shutil.move("%s.%s" % (name, format), destination)
+        if os.path.exists(source):
+            shutil.rmtree(source)
+        return
+
+    def prepare_preview_download(self, selected_img_idxs):
+        preview_files_dir = os.path.join(config["assets"], "preview_2D")
+        preview_zip_path = os.path.join(config["assets"], "preview_2D.zip")
+        # remove previous file
+        if os.path.exists(preview_files_dir):
+            shutil.rmtree(preview_files_dir)
+        if not os.path.exists(preview_files_dir):
+            os.makedirs(preview_files_dir)
+        if os.path.exists(preview_zip_path):
+            os.remove(preview_zip_path)
+        # create directory with the preview images copied from original dataset
+        for idx in selected_img_idxs:
+            img_path = self.img_paths[idx]
+            shutil.copy(img_path, preview_files_dir)
+        Dataset.make_archive(preview_files_dir, preview_files_dir + ".zip")
+        return
 
     def reset_dataset(self):
         new_dataset_obj = Dataset()
