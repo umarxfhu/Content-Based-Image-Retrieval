@@ -1,4 +1,4 @@
-from dash import html
+from dash import html, dcc
 from numpy import place
 from dataset import Dataset
 import dash_bootstrap_components as dbc
@@ -84,7 +84,12 @@ def create_LR_label(id, leftText, rightText, tip_text_left=None, tip_text_right=
 
     if tip_text_right:
         right_children = [
-            rightText,
+            html.H6(
+                children=rightText,
+                style={
+                    "word-wrap": "break-word",
+                },
+            ),
             dbc.Tooltip(
                 tip_text_right,
                 target=f"{id}_right",
@@ -119,3 +124,50 @@ def create_LR_label(id, leftText, rightText, tip_text_left=None, tip_text_right=
     )
 
     return label
+
+
+def create_title_with_button(left_child, button):
+    return html.Div(
+        children=[
+            html.Div(
+                html.H5(
+                    children=left_child,
+                    className="card-title",
+                    style={
+                        "textAlign": "left",
+                    },
+                ),
+                style={
+                    "textAlign": "left",
+                    "width": "47%",
+                    "display": "inline-block",
+                    "margin-left": "2%",
+                },
+            ),
+            html.Div(
+                children=button,
+                style={
+                    "textAlign": "right",
+                    "width": "50%",
+                    "display": "inline-block",
+                },
+            ),
+        ],
+    )
+
+
+def create_info_loading(id: str, children: list):
+    return dcc.Loading(
+        id=id,
+        children=[
+            html.Div(
+                html.H6(
+                    children=children,
+                    style={
+                        "textAlign": "center",
+                        "padding": "10px",
+                    },
+                )
+            )
+        ],
+    )

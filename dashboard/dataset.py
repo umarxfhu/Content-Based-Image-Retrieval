@@ -30,6 +30,7 @@ class Dataset:
         self.features = None
         self.embeddings = None
         self.labels = None
+        self.test_image = None
 
     ################################################################################
     """Functions for Dataset Processing"""

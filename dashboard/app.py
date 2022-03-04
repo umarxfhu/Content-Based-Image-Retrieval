@@ -4,8 +4,14 @@ from dash import html, dcc, no_update
 from dash.dependencies import Input, Output, State
 
 from dataset import Dataset
+from componentBuilder import (
+    create_LR_label,
+    gen_img_preview,
+    gen_download_button,
+    create_info_loading,
+    create_title_with_button,
+)
 from figureGen import blankFig, generate_fig_3D, generate_fig_2D
-from componentBuilder import create_LR_label, gen_img_preview, gen_download_button
 
 ################################################################################
 """ Global variables: """
@@ -35,60 +41,9 @@ title = html.H4(
     style={"color": "white", "text-align": "center", "padding": "10px"},
 )
 
-fileInfo = dcc.Loading(
-    id="fileInfo",
-    children=[
-        html.H6(
-            children=["Please upload FolderOfImagesYouWishToCluster.zip"],
-            style={"textAlign": "center", "padding": "10px"},
-        )
-    ],
-)
-
-dataInfo = dcc.Loading(
-    id="dataInfo",
-    children=[
-        html.Div(
-            children=["Then click the generate graphs button below."],
-            style={"textAlign": "Center", "padding": "10px"},
-        )
-    ],
-)
-
-graphWithLoadingAnimation = dcc.Graph(
-    id="mainGraph",
-    clear_on_unhover=True,
-    figure=blankFig(),
-    loading_state={"is_loading": True},
-)
-
-graph2D = dcc.Graph(
-    id="graph2D",
-    clear_on_unhover=True,
-    figure=blankFig(),
-    loading_state={"is_loading": True},
-)
-
-download_clusters_button = gen_download_button(
-    id="download_clusters_button",
-    children=["Download Clusters"],
-    href=app.get_asset_url("clusters.zip"),
-)
-
-download_preview_button = gen_download_button(
-    id="download_preview_button",
-    children=["Download"],
-    href=app.get_asset_url("preview_2D.zip"),
-)
-
-graph3DButton = dbc.Button(
-    children=["Generate Graphs"],
-    id="graph3DButton",
-    n_clicks=0,
-    disabled=True,
-    color="primary",
-)
-
+# ------------------------------------------------------------------------------
+#   3D Graph and it's Control Components
+# ------------------------------------------------------------------------------
 uploadButton = dcc.Upload(
     id="upload-image-folder",
     children=["Drag/Select ZIP"],
@@ -106,18 +61,18 @@ uploadButton = dcc.Upload(
     # Don't allow multiple files to be uploaded
     multiple=False,
 )
-
-imagePreview = html.Div(
-    id="imagePreview",
-    children=[
-        "Use the box or lasso selector on the 2D graph to preview selected images."
-    ],
-    style={
-        "textAlign": "center",
-        #'margin': '10px'
-    },
+graphWithLoadingAnimation = dcc.Graph(
+    id="mainGraph",
+    clear_on_unhover=True,
+    figure=blankFig(),
+    loading_state={"is_loading": True},
 )
-
+fileInfo = create_info_loading(
+    id="fileInfo", children=["Please upload FolderOfImagesYouWishToCluster.zip"]
+)
+dataInfo = create_info_loading(
+    id="dataInfo", children=["Then click the generate graphs button below."]
+)
 n_neighbors_left_text = (
     "This parameter controls how UMAP balances local versus global structure in the data. "
     "As n_neighbors is increased UMAP manages to see more of the overall "
@@ -141,6 +96,7 @@ n_neighbors_slider = [
     ),
     dcc.Slider(min=40, max=240, step=40, value=80, id="n_neighbors_slider"),
 ]
+
 min_dist_left_text = (
     "The min_dist parameter controls how tightly UMAP is allowed to pack points "
     "together. It, quite literally, provides the minimum distance apart that points "
@@ -213,15 +169,118 @@ min_samples_slider = [
         tooltip={"placement": "bottom"},
     ),
 ]
-
-# In browser storage objects
-dataProcessedFlagStore = dcc.Store(id="dataProcessedFlag", data=False)
-dataClusteredFlagStore = dcc.Store(id="dataClusteredFlag", data=False)
-
+download_clusters_button = gen_download_button(
+    id="download_clusters_button",
+    children=["Download Clusters"],
+    href=app.get_asset_url("clusters.zip"),
+)
+graph3DButton = dbc.Button(
+    children=["Generate Graphs"],
+    id="graph3DButton",
+    n_clicks=0,
+    disabled=True,
+    color="primary",
+)
 card3DButtons = html.Div(
     children=[html.Div(download_clusters_button), html.Div(graph3DButton)],
     style={"display": "flex", "justify-content": "space-around"},
 )
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+#   2D Graph Components
+# ------------------------------------------------------------------------------
+graph2D = dcc.Graph(
+    id="graph2D",
+    clear_on_unhover=True,
+    figure=blankFig(),
+    loading_state={"is_loading": True},
+)
+imagePreview = html.Div(
+    id="imagePreview",
+    children=[
+        "Use the box or lasso selector on the 2D graph to preview selected images."
+    ],
+    style={
+        "textAlign": "center",
+        #'margin': '10px'
+    },
+)
+download_preview_button = gen_download_button(
+    id="download_preview_button",
+    children=["Download"],
+    href=app.get_asset_url("preview_2D.zip"),
+)
+preview_title = create_title_with_button(["Selection Preview"], download_preview_button)
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
+#   Image Similarity Search Components
+# ------------------------------------------------------------------------------
+upload_image_file_button = dcc.Upload(
+    id="upload_image_file_button",
+    children=["Drag/Select Image File"],
+    style={
+        "height": "41px",
+        "lineHeight": "41px",
+        "borderWidth": "1px",
+        "borderStyle": "dashed",
+        "borderRadius": "5px",
+        "textAlign": "center",
+    },
+    # Don't allow multiple files to be uploaded
+    multiple=False,
+)
+download_search_button = gen_download_button(
+    id="download_search_button",
+    children=["Download"],
+    href=app.get_asset_url("search.zip"),
+)
+image_search_title = html.Div(
+    children=[
+        html.Div(
+            [upload_image_file_button],
+            style={
+                "textAlign": "left",
+                "width": "47%",
+                "display": "inline-block",
+                "margin-left": "2%",
+            },
+        ),
+        html.Div(
+            [download_search_button],
+            style={
+                "textAlign": "right",
+                "width": "50%",
+                "display": "inline-block",
+            },
+        ),
+    ],
+)
+image_file_info = create_info_loading(id="image_file_info", children=[""])
+preview_test_image = html.Div(
+    id="preview_test_image",
+    children=[
+        html.H6(
+            children=["Test"],
+            style={"textAlign": "center", "padding": "10px"},
+        )
+    ],
+)
+# ------------------------------------------------------------------------------
+
+# Not in use currently
+jump_up_button = dbc.Button(
+    children=["Jump to Top"],
+    id="jump_up_button",
+    n_clicks=0,
+    disabled=False,
+    color="primary",
+)
+
+# In browser storage objects
+dataProcessedFlagStore = dcc.Store(id="dataProcessedFlag", data=False)
+dataClusteredFlagStore = dcc.Store(id="dataClusteredFlag", data=False)
 
 ################################################################################
 """ Dash UI Layout: """
@@ -283,59 +342,68 @@ app.layout = dbc.Container(
         ),
         horz_line,
         dbc.Row(
-            dbc.Col(
-                children=[
-                    graph2D,
-                    dcc.Tooltip(id="graph2DTooltip", direction="right"),
-                    dcc.Download(id="graph2DDownload"),
-                    horz_line,
-                    dbc.Row(
-                        children=(
-                            dbc.Col(
-                                children=[
-                                    dbc.Card(
-                                        [
-                                            dbc.Row(
-                                                [
-                                                    dbc.Col(
-                                                        html.H5(
-                                                            "2D Graph Selection Preview",
-                                                            className="card-title",
-                                                            style={
-                                                                "textAlign": "left",
-                                                                "margin-left": "2%",
-                                                            },
-                                                        ),
-                                                        md=11,
-                                                    ),
-                                                    dbc.Col(
-                                                        [download_preview_button],
-                                                        style={"float": "right"},
-                                                        md=1,
-                                                    ),
-                                                ],
-                                                justify="center",
-                                                align="center",
-                                            ),
-                                            horz_line,
-                                            imagePreview,
-                                        ],
-                                        body=True,
-                                    ),
-                                ],
-                                width="auto",
-                                md=12,
-                            ),
+            [
+                dbc.Col(
+                    [
+                        dbc.Card(
+                            [
+                                dbc.Row(
+                                    [image_search_title],
+                                ),
+                                horz_line,
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            [preview_test_image],
+                                            style={"max-height": "20vh"},
+                                            md=6,
+                                        ),
+                                        dbc.Col([image_file_info], md=6),
+                                    ]
+                                ),
+                                horz_line,
+                            ],
+                            body=True,
                         ),
-                        justify="center",
-                        align="center",
-                    ),
-                    horz_line,
-                ],
-            ),
+                    ],
+                    md=4,
+                ),
+                dbc.Col(
+                    children=[
+                        graph2D,
+                        dcc.Tooltip(id="graph2DTooltip", direction="right"),
+                        dcc.Download(id="graph2DDownload"),
+                        horz_line,
+                        dbc.Row(
+                            children=(
+                                dbc.Col(
+                                    children=[
+                                        dbc.Card(
+                                            [
+                                                dbc.Row(
+                                                    [preview_title],
+                                                ),
+                                                horz_line,
+                                                imagePreview,
+                                            ],
+                                            body=True,
+                                        ),
+                                    ],
+                                    width="auto",
+                                    md=12,
+                                ),
+                            ),
+                            justify="center",
+                            align="center",
+                        ),
+                        horz_line,
+                    ],
+                    md=8,
+                ),
+            ],
             style={"height": "50vh"},
             justify="center",
-            align="center",
+            align="start",
         ),
     ],
     fluid=True,
@@ -370,6 +438,51 @@ def uploadData(content, filename):
         )
         return [True], outputText
 
+    return no_update, no_update
+
+
+########################################################################
+""" [CALLBACK]: upload image file and find similar images """
+########################################################################
+@app.callback(
+    [Output("image_file_info", "children"), Output("preview_test_image", "children")],
+    [Input("upload_image_file_button", "contents")],
+    [
+        State("upload_image_file_button", "filename"),
+    ],
+)
+def uploadData(content, filename):
+    global dataset_obj
+    if content is not None:
+        content_type, content_str = content.split(",")
+        output_filename = (
+            html.H6(
+                children=["[Filename]: ", html.Br(), filename],
+                style={
+                    "textAlign": "left",
+                    "padding": "10px",
+                    "word-wrap": "break-word",
+                },
+            ),
+        )
+        test_image = html.Div(
+            [
+                html.Img(
+                    src=content,
+                    style={
+                        # "max-inline-size": "100%",
+                        # "block-size": "auto",
+                        "width": "100%",
+                        "height": "100%",
+                        "min-height": "10vh",
+                        # "display": "block",
+                        "object-fit": "contain",
+                        "max-height": "20vh",
+                    },
+                )
+            ],
+        )
+        return output_filename, test_image
     return no_update, no_update
 
 
@@ -565,4 +678,4 @@ def display_selected_data(selectedData):
 ################################################################################
 
 if __name__ == "__main__":
-    app.run_server(debug=False)
+    app.run_server(debug=True)
