@@ -6,7 +6,7 @@ import dash_bootstrap_components as dbc
 # Only certain component building functions are here
 
 
-def gen_img_preview(dataset_obj: Dataset, selected_img_idxs):
+def gen_img_preview(dataset_obj: Dataset, selected_img_idxs, scale=1):
     """Generate the selection preview when the lasso/box tool on 2D graph is used.
     inputs:
         - img_paths: (type: string) Component identifier for callback use
@@ -19,8 +19,8 @@ def gen_img_preview(dataset_obj: Dataset, selected_img_idxs):
                 html.Img(
                     src=image_uri,
                     style={
-                        "height": "10%",
-                        "width": "10%",
+                        "height": f"{10*scale}%",
+                        "width": f"{10*scale}%",
                         "float": "left",
                         "position": "relative",
                         "padding-top": 1,

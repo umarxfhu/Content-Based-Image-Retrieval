@@ -3,6 +3,11 @@ import dash_bootstrap_components as dbc
 from dash import html, dcc, no_update
 from dash.dependencies import Input, Output, State
 
+import io
+import os
+import base64
+from PIL import Image
+
 from dataset import Dataset
 from componentBuilder import (
     create_LR_label,
@@ -77,8 +82,8 @@ n_neighbors_left_text = (
     "This parameter controls how UMAP balances local versus global structure in the data. "
     "As n_neighbors is increased UMAP manages to see more of the overall "
     "structure of the data, gluing more components together, and better coverying "
-    "the broader structure of the data. As n_neighbors increases further more and "
-    "more focus in placed on the overall structure of the data. This results in, "
+    "the broader structure of the data. As n_neighbors increases further, more and "
+    "more focus in placed on the overall structure of the data. This results in "
     "a plot where the overall structure is well captured, but at the loss of some of "
     "the finer local structure (individual images may no longer necessarily be "
     "immediately next to their closest match)."
@@ -230,6 +235,7 @@ upload_image_file_button = dcc.Upload(
     },
     # Don't allow multiple files to be uploaded
     multiple=False,
+    disabled=True,
 )
 download_search_button = gen_download_button(
     id="download_search_button",
@@ -262,10 +268,25 @@ preview_test_image = html.Div(
     id="preview_test_image",
     children=[
         html.H6(
-            children=["Test"],
+            children=[""],
             style={"textAlign": "center", "padding": "10px"},
         )
     ],
+)
+search_preview = html.Div(
+    id="search_preview",
+    children=["Upload image to view similar images."],
+    style={
+        "textAlign": "center",
+        #'margin': '10px'
+    },
+)
+search_preview_title = html.H4(
+    children="Results:",
+    style={
+        "textAlign": "left",
+        "padding": "10px",
+    },
 )
 # ------------------------------------------------------------------------------
 
@@ -355,13 +376,21 @@ app.layout = dbc.Container(
                                     [
                                         dbc.Col(
                                             [preview_test_image],
-                                            style={"max-height": "20vh"},
+                                            style={"max-height": "15vh"},
                                             md=6,
                                         ),
                                         dbc.Col([image_file_info], md=6),
                                     ]
                                 ),
                                 horz_line,
+                                dbc.Row(
+                                    [
+                                        dbc.Col(search_preview_title),
+                                        dbc.Row([search_preview]),
+                                    ],
+                                    justify="center",
+                                    align="center",
+                                ),
                             ],
                             body=True,
                         ),
@@ -384,7 +413,11 @@ app.layout = dbc.Container(
                                                     [preview_title],
                                                 ),
                                                 horz_line,
-                                                imagePreview,
+                                                dbc.Row(
+                                                    dbc.Col(imagePreview),
+                                                    justify="center",
+                                                    align="center",
+                                                ),
                                             ],
                                             body=True,
                                         ),
@@ -445,18 +478,22 @@ def uploadData(content, filename):
 """ [CALLBACK]: upload image file and find similar images """
 ########################################################################
 @app.callback(
-    [Output("image_file_info", "children"), Output("preview_test_image", "children")],
-    [Input("upload_image_file_button", "contents")],
+    [
+        Output("upload_image_file_button", "disabled"),
+        Output("image_file_info", "children"),
+        Output("preview_test_image", "children"),
+        Output("search_preview", "children"),
+    ],
+    [Input("dataProcessedFlag", "data"), Input("upload_image_file_button", "contents")],
     [
         State("upload_image_file_button", "filename"),
     ],
 )
-def uploadData(content, filename):
-    global dataset_obj
+def uploadData(data_processed_flag, content, filename):
     if content is not None:
         content_type, content_str = content.split(",")
         output_filename = (
-            html.H6(
+            html.P(
                 children=["[Filename]: ", html.Br(), filename],
                 style={
                     "textAlign": "left",
@@ -470,20 +507,35 @@ def uploadData(content, filename):
                 html.Img(
                     src=content,
                     style={
-                        # "max-inline-size": "100%",
-                        # "block-size": "auto",
                         "width": "100%",
                         "height": "100%",
                         "min-height": "10vh",
-                        # "display": "block",
+                        "max-height": "15vh",
                         "object-fit": "contain",
-                        "max-height": "20vh",
                     },
                 )
             ],
         )
-        return output_filename, test_image
-    return no_update, no_update
+        # content is an encoded picture
+        # decode picture and save as file
+        test_image_folder = "assets/image_search/input/"
+        if not os.path.exists(test_image_folder):
+            os.makedirs(test_image_folder)
+        Dataset.del_folder_contents(test_image_folder)
+        test_image_path = os.path.join(test_image_folder, filename)
+        with open(test_image_path, "wb") as f:
+            img_bytes = base64.b64decode(content.split("base64,")[-1])
+            f.write(img_bytes)
+        # print("test_image_path is:", test_image_path)
+        # search for 6 similar imagesz
+        result_idxs = dataset_obj.find_similar_imgs(test_image_path)
+        # print("result_idxs", result_idxs[0])
+        # display them
+        result_preview = gen_img_preview(dataset_obj, result_idxs[0], scale=2.5)
+        return no_update, output_filename, test_image, result_preview
+    if data_processed_flag:
+        return False, no_update, no_update, no_update
+    return no_update, no_update, no_update, no_update
 
 
 ########################################################################
@@ -678,4 +730,4 @@ def display_selected_data(selectedData):
 ################################################################################
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run_server(debug=False)

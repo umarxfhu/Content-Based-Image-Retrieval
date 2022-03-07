@@ -9,6 +9,8 @@ except:
 
 import os
 import io
+import faiss
+import torch
 import pickle
 import base64
 import shutil
@@ -19,6 +21,7 @@ from PIL import Image
 from zipfile import ZipFile
 
 from config import config
+from torchvision import transforms, models
 from featureExtraction import extract_features_paths
 
 
@@ -31,6 +34,7 @@ class Dataset:
         self.embeddings = None
         self.labels = None
         self.test_image = None
+        self.index = None
 
     ################################################################################
     """Functions for Dataset Processing"""
@@ -78,6 +82,11 @@ class Dataset:
             pickle.dump(self.features, open(path_to_features_pickle, "wb"))
             pickle.dump(self.img_paths, open(path_to_img_paths_pickle, "wb"))
 
+        print(f"[INFO][STARTED] Adding features to FAISS index")
+        self.index = faiss.IndexFlatL2(2048)
+        self.index.add(self.features)
+        print(f"[INFO][DONE] Adding features to FAISS index")
+
         if config["debug"]:
             print(
                 "[DEBUG]: Size of dataset['features']: "
@@ -91,6 +100,39 @@ class Dataset:
             )
 
         return
+
+    def find_similar_imgs(self, test_image_path: str) -> list:
+        transform = transforms.Compose(
+            [
+                transforms.Resize(size=[224, 224], interpolation=2),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        print("[INFO] Using Device:", DEVICE)
+        model = models.resnet50(pretrained=True)
+        model.to(DEVICE)
+
+        def pooling_output(x):
+            for layer_name, layer in model._modules.items():
+                x = layer(x)
+                if layer_name == "avgpool":
+                    break
+            return x
+
+        PIL_img = Image.open(test_image_path).convert("RGB")
+        input_tensor = transform(PIL_img)
+        input_tensor = input_tensor.view(1, *input_tensor.shape)
+
+        with torch.no_grad():
+            query_descriptors = pooling_output(input_tensor.to(DEVICE)).cpu().numpy()
+            distance, indices = self.index.search(query_descriptors.reshape(1, 2048), 8)
+
+        return indices
 
     def generate_clusters(self, n_neighbors, min_dist, min_cluster_size, min_samples):
         """Clusters the input feature vectors and returns embeddings + labels.
@@ -224,6 +266,19 @@ class Dataset:
         if os.path.exists(source):
             shutil.rmtree(source)
         return
+
+    @classmethod
+    def del_folder_contents(cls, folder: str) -> None:
+        if os.path.exists(folder):
+            for filename in os.listdir(folder):
+                file_path = os.path.join(folder, filename)
+                try:
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    print("Failed to delete %s. Reason: %s" % (file_path, e))
 
     def prepare_preview_download(self, selected_img_idxs):
         preview_files_dir = os.path.join(config["assets"], "preview_2D")
