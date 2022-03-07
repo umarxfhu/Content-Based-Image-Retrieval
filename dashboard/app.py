@@ -281,10 +281,17 @@ search_preview = html.Div(
         #'margin': '10px'
     },
 )
-search_preview_title = html.H4(
+search_preview_results_title = html.H6(
     children="Results:",
     style={
         "textAlign": "left",
+        "padding": "10px",
+    },
+)
+search_preview_main_title = html.H5(
+    children="Reverse Image Search",
+    style={
+        "textAlign": "center",
         "padding": "10px",
     },
 )
@@ -368,6 +375,7 @@ app.layout = dbc.Container(
                     [
                         dbc.Card(
                             [
+                                dbc.Row(search_preview_main_title),
                                 dbc.Row(
                                     [image_search_title],
                                 ),
@@ -385,7 +393,7 @@ app.layout = dbc.Container(
                                 horz_line,
                                 dbc.Row(
                                     [
-                                        dbc.Col(search_preview_title),
+                                        dbc.Col(search_preview_results_title),
                                         dbc.Row([search_preview]),
                                     ],
                                     justify="center",

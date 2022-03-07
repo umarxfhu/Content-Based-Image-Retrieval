@@ -130,7 +130,9 @@ class Dataset:
 
         with torch.no_grad():
             query_descriptors = pooling_output(input_tensor.to(DEVICE)).cpu().numpy()
-            distance, indices = self.index.search(query_descriptors.reshape(1, 2048), 8)
+            distance, indices = self.index.search(
+                query_descriptors.reshape(1, 2048), 12
+            )
 
         return indices
 

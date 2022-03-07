@@ -49,7 +49,6 @@ def generate_fig_3D(
 def generate_fig_2D(embeddings, labels):
     """inputs: data: dictionary with features and image paths
     outputs: scatterPlot: plotly express 2D object with updates"""
-
     # Create 2D scatter graph with WebGL to handle large datasets
     scatterPlot = go.Figure(
         data=go.Scattergl(
