@@ -2,7 +2,7 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,linux,flask
 
 # ignore assets folder as it holds large data
-dashboard/assets/
+app/assets/
 
 ### Flask ###
 instance/*

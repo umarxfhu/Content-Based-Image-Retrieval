@@ -1,12 +1,11 @@
+import flask
 import dash
 import dash_bootstrap_components as dbc
 from dash import html, dcc, no_update
 from dash.dependencies import Input, Output, State
 
-import io
 import os
 import base64
-from PIL import Image
 
 from dataset import Dataset
 from componentBuilder import (
@@ -31,7 +30,8 @@ dataset_obj = Dataset()
 """ Initialize Dash App: """
 ################################################################################
 
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
+server = flask.Flask(__name__)
+app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.CYBORG])
 
 
 ################################################################################
@@ -747,4 +747,4 @@ def display_selected_data(selectedData):
 ################################################################################
 
 if __name__ == "__main__":
-    app.run_server(debug=False)
+    server.run()
