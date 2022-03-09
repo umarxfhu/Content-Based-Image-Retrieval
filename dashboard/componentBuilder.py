@@ -52,10 +52,6 @@ def gen_download_button(id: str, children: "list[str]", href: str):
     )
 
 
-def update_preview_button(dataset_obj: Dataset, selected_img_idxs):
-    pass
-
-
 def create_LR_label(id, leftText, rightText, tip_text_left=None, tip_text_right=None):
     """Insert an html.Div with text on one line with left and right
     justified portions.

@@ -114,7 +114,7 @@ class Dataset:
 
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
         print("[INFO] Using Device:", DEVICE)
-        model = models.resnet50(pretrained=True)
+        model = models.resnet101(pretrained=True, progress=True)
         model.to(DEVICE)
 
         def pooling_output(x):

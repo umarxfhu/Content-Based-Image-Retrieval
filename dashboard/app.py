@@ -66,11 +66,17 @@ uploadButton = dcc.Upload(
     # Don't allow multiple files to be uploaded
     multiple=False,
 )
-graphWithLoadingAnimation = dcc.Graph(
-    id="mainGraph",
-    clear_on_unhover=True,
-    figure=blankFig(),
-    loading_state={"is_loading": True},
+graphWithLoadingAnimation = dcc.Loading(
+    children=[
+        dcc.Graph(
+            id="mainGraph",
+            clear_on_unhover=True,
+            figure=blankFig(),
+            loading_state={"is_loading": True},
+            style={"height": "70vh"},
+        )
+    ],
+    type="graph",
 )
 fileInfo = create_info_loading(
     id="fileInfo", children=["Please upload FolderOfImagesYouWishToCluster.zip"]
@@ -195,11 +201,16 @@ card3DButtons = html.Div(
 # ------------------------------------------------------------------------------
 #   2D Graph Components
 # ------------------------------------------------------------------------------
-graph2D = dcc.Graph(
-    id="graph2D",
-    clear_on_unhover=True,
-    figure=blankFig(),
-    loading_state={"is_loading": True},
+graph2D = dcc.Loading(
+    children=[
+        dcc.Graph(
+            id="graph2D",
+            clear_on_unhover=True,
+            figure=blankFig(),
+            loading_state={"is_loading": True},
+        )
+    ],
+    type="graph",
 )
 imagePreview = html.Div(
     id="imagePreview",
@@ -457,7 +468,12 @@ app.layout = dbc.Container(
 """ [CALLBACK]: upload zip file and extract features/paths """
 ########################################################################
 @app.callback(
-    [Output("dataProcessedFlag", "data"), Output("fileInfo", "children")],
+    [
+        Output("dataProcessedFlag", "data"),
+        Output("fileInfo", "children"),
+        Output("graph3DButton", "disabled"),
+        Output("upload_image_file_button", "disabled"),
+    ],
     [Input("upload-image-folder", "contents")],
     State("upload-image-folder", "filename"),
 )
@@ -477,9 +493,8 @@ def uploadData(content, filename):
             leftText="[FILE]:",
             rightText=dataset_obj.name,
         )
-        return [True], outputText
-
-    return no_update, no_update
+        return [True], outputText, False, False
+    return no_update, no_update, no_update, no_update
 
 
 ########################################################################
@@ -487,17 +502,16 @@ def uploadData(content, filename):
 ########################################################################
 @app.callback(
     [
-        Output("upload_image_file_button", "disabled"),
         Output("image_file_info", "children"),
         Output("preview_test_image", "children"),
         Output("search_preview", "children"),
     ],
-    [Input("dataProcessedFlag", "data"), Input("upload_image_file_button", "contents")],
+    [Input("upload_image_file_button", "contents")],
     [
         State("upload_image_file_button", "filename"),
     ],
 )
-def uploadData(data_processed_flag, content, filename):
+def uploadData(content, filename):
     if content is not None:
         content_type, content_str = content.split(",")
         output_filename = (
@@ -540,10 +554,8 @@ def uploadData(data_processed_flag, content, filename):
         # print("result_idxs", result_idxs[0])
         # display them
         result_preview = gen_img_preview(dataset_obj, result_idxs[0], scale=2.5)
-        return no_update, output_filename, test_image, result_preview
-    if data_processed_flag:
-        return False, no_update, no_update, no_update
-    return no_update, no_update, no_update, no_update
+        return output_filename, test_image, result_preview
+    return no_update, no_update, no_update
 
 
 ########################################################################
@@ -554,11 +566,11 @@ def uploadData(data_processed_flag, content, filename):
         Output("mainGraph", "figure"),
         Output("dataClusteredFlag", "data"),
         Output("dataInfo", "children"),
-        Output("graph3DButton", "disabled"),
         Output("download_clusters_button", "disabled"),
     ],
-    [Input("dataProcessedFlag", "data"), Input("graph3DButton", "n_clicks")],
+    [Input("graph3DButton", "n_clicks")],
     [
+        State("dataProcessedFlag", "data"),
         State("n_neighbors_slider", "value"),
         State("min_dist_slider", "value"),
         State("min_cluster_size_slider", "value"),
@@ -566,28 +578,25 @@ def uploadData(data_processed_flag, content, filename):
     ],
 )
 def update_output(
-    dataProcessedFlag, n_clicks, n_neighbors, min_dist, min_cluster_size, min_samples
+    n_clicks, dataProcessedFlag, n_neighbors, min_dist, min_cluster_size, min_samples
 ):
+    # After feature extraction, enable 3D graph gen button
     if dataProcessedFlag:
-        # After feature extraction, enable 3D graph gen button
-        if n_clicks == 0:
-            return no_update, no_update, no_update, False, no_update
-        else:
-            # Generate the 3D graph and update global variable
-            figure = generate_fig_3D(
-                dataset_obj, n_neighbors, min_dist, min_cluster_size, min_samples
-            )
-            # Output Clustering statistics
-            output_text = create_LR_label(
-                id="percentClusteredText",
-                leftText="[INFO]:",
-                rightText=f"{dataset_obj.calculate_percent_clustered()}% clustered",
-            )
-            # arrange zip files to create download
-            dataset_obj.create_clusters_zip()
-            return figure, [True], output_text, no_update, False
+        # Generate the 3D graph and update global variable
+        figure = generate_fig_3D(
+            dataset_obj, n_neighbors, min_dist, min_cluster_size, min_samples
+        )
+        # Output Clustering statistics
+        output_text = create_LR_label(
+            id="percentClusteredText",
+            leftText="[INFO]:",
+            rightText=f"{dataset_obj.calculate_percent_clustered()}% clustered",
+        )
+        # arrange zip files to create download
+        dataset_obj.create_clusters_zip()
+        return figure, [True], output_text, False
     else:
-        return no_update, no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update
 
 
 ########################################################################

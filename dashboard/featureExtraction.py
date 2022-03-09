@@ -56,7 +56,7 @@ def extract_features_paths(data_directory):
 
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     print("[INFO] Using Device:", DEVICE)
-    model = models.resnet50(pretrained=True)
+    model = models.resnet101(pretrained=True, progress=True)
     print(f"[INFO] Loading model: {model.__class__.__name__}")
 
     features = []
