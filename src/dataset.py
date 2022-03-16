@@ -20,7 +20,14 @@ import pandas as pd
 from PIL import Image
 from zipfile import ZipFile
 
-from config import config
+config = {
+    "debug": True,
+    "assets": "assets",
+    "unzipped_dir": "assets/unzipped",
+    "resources_dir": "assets/resources",
+    "clusters_dir": "assets/clusters",
+}
+
 from torchvision import transforms, models
 from featureExtraction import extract_features_paths
 
@@ -187,6 +194,7 @@ class Dataset:
             print(
                 f"[INFO][STARTED]: Dimensionality reduction... this could take a few minutes."
             )
+            print("self.features before umapping", self.features)
             embeddings = UMAP(
                 n_neighbors=n_neighbors,
                 min_dist=min_dist,

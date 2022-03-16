@@ -1,0 +1,27 @@
+version: '3'
+services:
+  api:
+    container_name: flask-container
+    stdin_open: true # docker run -i
+    tty: true # docker run -t
+    build: .
+    links:
+      - redis
+    entrypoint: python app.py
+    env_file:
+      - .env
+    ports:
+      - '5000:5000'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+  redis:
+    image: redis
+    container_name: redis-container
+    ports:
+      - "6379:6379"

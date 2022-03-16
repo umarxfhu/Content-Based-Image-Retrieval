@@ -2,13 +2,12 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,linux,flask
 
 # ignore assets folder as it holds large data
-app/assets/
+src/assets/
 
 ### Flask ###
 instance/*
 !instance/.gitignore
 .webassets-cache
-.env
 
 ### Flask.Python Stack ###
 # Byte-compiled / optimized / DLL files

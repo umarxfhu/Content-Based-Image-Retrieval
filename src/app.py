@@ -1,11 +1,13 @@
+import os
+import sys
+import base64
+
 import flask
 import dash
-import dash_bootstrap_components as dbc
+from flask_caching import Cache
 from dash import html, dcc, no_update
+import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
-
-import os
-import base64
 
 from dataset import Dataset
 from componentBuilder import (
@@ -21,7 +23,13 @@ from figureGen import blankFig, generate_fig_3D, generate_fig_2D
 """ Global variables: """
 ################################################################################
 
-from config import config
+config = {
+    "debug": True,
+    "assets": "assets",
+    "unzipped_dir": "assets/unzipped",
+    "resources_dir": "assets/resources",
+    "clusters_dir": "assets/clusters",
+}
 
 dataset_obj = Dataset()
 
@@ -31,6 +39,10 @@ dataset_obj = Dataset()
 ################################################################################
 
 server = flask.Flask(__name__)
+server.config.from_object(
+    "config.Config"
+)  # Set the configuration variables to the flask application
+cache = Cache(server)  # Initialize Cache
 app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.CYBORG])
 
 
@@ -105,7 +117,15 @@ n_neighbors_slider = [
         ),
         tip_text_right=n_neighbors_left_text,
     ),
-    dcc.Slider(min=40, max=240, step=40, value=80, id="n_neighbors_slider"),
+    dcc.Slider(
+        min=20,
+        max=240,
+        step=20,
+        value=80,
+        id="n_neighbors_slider",
+        marks=None,
+        tooltip={"placement": "bottom"},
+    ),
 ]
 
 min_dist_left_text = (
@@ -128,7 +148,15 @@ min_dist_slider = [
         ),
         tip_text_right=min_dist_left_text,
     ),
-    dcc.Slider(min=0.0, max=0.5, step=0.1, value=0.0, id="min_dist_slider"),
+    dcc.Slider(
+        min=0.0,
+        max=0.5,
+        step=0.1,
+        value=0.0,
+        id="min_dist_slider",
+        marks=None,
+        tooltip={"placement": "bottom"},
+    ),
 ]
 
 min_cluster_size_left_text = (
@@ -640,6 +668,7 @@ def display_hover(hoverData, dataClusteredFlag):
     # Load image with pillow
     hover_img_index = hoverData["points"][0]["pointNumber"]
     im_uri = dataset_obj.gen_img_uri(hover_img_index)
+
     # demo only shows the first point, but other points may also be available
     hover_data = hoverData["points"][0]
     bbox = hover_data["bbox"]
@@ -742,9 +771,5 @@ def display_selected_data(selectedData):
         return no_update, no_update
 
 
-################################################################################
-""" __main__: """
-################################################################################
-
 if __name__ == "__main__":
-    server.run()
+    server.run(debug=True, host="0.0.0.0", port=5000)

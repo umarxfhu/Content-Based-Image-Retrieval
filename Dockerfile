@@ -1,9 +1,13 @@
-FROM tiangolo/uwsgi-nginx-flask:python3.8
-LABEL maintainer="umarxfhu"
+FROM python:3.9
 
-COPY requirements.txt /tmp/
-COPY ./app /app
+# Set the working directory inside the container
+WORKDIR /app
 
-RUN pip install -U pip && pip install -r /tmp/requirements.txt
+# Copy requirements from local to docker image
+COPY requirements.txt /app
 
-ENV NGINX_WORKER_PROCESSES auto
+# Install the dependencies in the docker image
+RUN pip3 install -r requirements.txt --no-cache-dir
+
+# Copy everything from the current dir to the image
+COPY ./src .
