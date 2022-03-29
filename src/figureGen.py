@@ -1,7 +1,7 @@
 import plotly.express as px
 import plotly.graph_objects as go
 
-from dataset import Dataset
+from dataset import generate_clusters
 
 
 def blankFig():
@@ -14,22 +14,34 @@ def blankFig():
 
 
 def generate_fig_3D(
-    data: Dataset, n_neighbors_value, min_dist_value, min_cluster_size, min_samples
+    redis_client,
+    session_id,
+    dataset_name,
+    n_neighbors_value,
+    min_dist_value,
+    min_cluster_size,
+    min_samples,
 ):
-    """inputs: data: dictionary with features and image paths
+    """[TODO]inputs: data: dictionary with features and image paths
     outputs: scatterPlot: plotly express 3D object with updates"""
 
-    data.generate_clusters(
-        n_neighbors_value, min_dist_value, min_cluster_size, min_samples
+    embeddings, labels, percent_clustered = generate_clusters(
+        redis_client,
+        session_id,
+        dataset_name,
+        n_neighbors_value,
+        min_dist_value,
+        min_cluster_size,
+        min_samples,
     )
     # Create 3D scatter plot to visualize
     scatterPlot = px.scatter_3d(
-        data.embeddings,
+        embeddings,
         x=0,
         y=1,
         z=2,
         # color=[str(data.labels[i]) for i in range(len(data.labels))],
-        color=data.labels,
+        color=labels,
         color_discrete_sequence=px.colors.sequential.Viridis,
         labels={"color": "cluster"},
     )
@@ -43,7 +55,7 @@ def generate_fig_3D(
     scatterPlot.update_layout(template="plotly_dark")
     scatterPlot.update_layout(margin=dict(l=10, r=10, b=10, t=10))
 
-    return scatterPlot
+    return scatterPlot, percent_clustered
 
 
 def generate_fig_2D(embeddings, labels):

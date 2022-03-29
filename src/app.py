@@ -1,15 +1,22 @@
 import os
 import sys
+import uuid
 import base64
 
 import flask
 import dash
-from flask_caching import Cache
+from redis import Redis
 from dash import html, dcc, no_update
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 
-from dataset import Dataset
+from dataset import (
+    decode_and_extract_zip,
+    create_clusters_zip,
+    setup_umap,
+    get_labels,
+    gen_img_uri,
+)
 from componentBuilder import (
     create_LR_label,
     gen_img_preview,
@@ -31,18 +38,16 @@ config = {
     "clusters_dir": "assets/clusters",
 }
 
-dataset_obj = Dataset()
-
 
 ################################################################################
 """ Initialize Dash App: """
 ################################################################################
 
 server = flask.Flask(__name__)
-server.config.from_object(
-    "config.Config"
-)  # Set the configuration variables to the flask application
-cache = Cache(server)  # Initialize Cache
+# Initialize Cache
+redis_client = Redis(host="redis", port=6379, db=0, decode_responses=True)
+# [TODO]: before deploying consider memory management i.e when should you clear redis
+redis_client.flushall()
 app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.CYBORG])
 
 
@@ -345,149 +350,158 @@ jump_up_button = dbc.Button(
     color="primary",
 )
 
-# In browser storage objects
-dataProcessedFlagStore = dcc.Store(id="dataProcessedFlag", data=False)
-dataClusteredFlagStore = dcc.Store(id="dataClusteredFlag", data=False)
 
 ################################################################################
 """ Dash UI Layout: """
 ################################################################################
 
-app.layout = dbc.Container(
-    [
-        dataProcessedFlagStore,
-        dataClusteredFlagStore,
-        dbc.Row(title),
-        dbc.Row(
-            [
-                dbc.Col(
-                    dbc.Card(
-                        [
-                            dbc.Row(
-                                children=[
-                                    dbc.Row(fileInfo),
-                                    dbc.Row(dataInfo),
-                                    dbc.Row(uploadButton),
-                                    horz_line,
-                                    dbc.Row(n_neighbors_slider),
-                                    dbc.Row(min_dist_slider),
-                                    horz_line,
-                                    dbc.Row(min_cluster_size_slider),
-                                    dbc.Row(min_samples_slider),
-                                    horz_line,
-                                    dbc.Row(
-                                        [card3DButtons],
-                                        justify="center",
-                                        align="center",
-                                    ),
-                                ],
-                                justify="center",
-                                align="center",
-                            ),
-                        ],
-                        body=True,
-                        style={"height": "70vh"},
-                    ),
-                    md=3,
-                    align="start",
-                ),
-                dbc.Col(
-                    children=[
-                        dbc.Row(
-                            children=[
-                                graphWithLoadingAnimation,
-                                dcc.Tooltip(id="mainGraphTooltip", direction="right"),
-                                dcc.Download(id="mainGraphDownload"),
-                            ],
-                            style={"height": "70vh"},
-                        ),
-                    ],
-                    md=9,
-                ),
-            ],
-            align="center",
-        ),
-        horz_line,
-        dbc.Row(
-            [
-                dbc.Col(
-                    [
+
+def serve_layout():
+    session_id = str(uuid.uuid4())
+    redis_client.rpush("users", session_id)
+    return dbc.Container(
+        [
+            # In browser storage objects
+            dcc.Store(id="session-id", data=session_id),
+            dcc.Store(id="dataProcessedFlag", data=False),
+            dcc.Store(id="dataClusteredFlag", data=False),
+            dbc.Row(title),
+            dbc.Row(
+                [
+                    dbc.Col(
                         dbc.Card(
                             [
-                                dbc.Row(search_preview_main_title),
                                 dbc.Row(
-                                    [image_search_title],
-                                ),
-                                horz_line,
-                                dbc.Row(
-                                    [
-                                        dbc.Col(
-                                            [preview_test_image],
-                                            style={"max-height": "15vh"},
-                                            md=6,
+                                    children=[
+                                        dbc.Row(fileInfo),
+                                        dbc.Row(dataInfo),
+                                        dbc.Row(uploadButton),
+                                        horz_line,
+                                        dbc.Row(n_neighbors_slider),
+                                        dbc.Row(min_dist_slider),
+                                        horz_line,
+                                        dbc.Row(min_cluster_size_slider),
+                                        dbc.Row(min_samples_slider),
+                                        horz_line,
+                                        dbc.Row(
+                                            [card3DButtons],
+                                            justify="center",
+                                            align="center",
                                         ),
-                                        dbc.Col([image_file_info], md=6),
-                                    ]
-                                ),
-                                horz_line,
-                                dbc.Row(
-                                    [
-                                        dbc.Col(search_preview_results_title),
-                                        dbc.Row([search_preview]),
                                     ],
                                     justify="center",
                                     align="center",
                                 ),
                             ],
                             body=True,
+                            style={"height": "70vh"},
                         ),
-                    ],
-                    md=4,
-                ),
-                dbc.Col(
-                    children=[
-                        graph2D,
-                        dcc.Tooltip(id="graph2DTooltip", direction="right"),
-                        dcc.Download(id="graph2DDownload"),
-                        horz_line,
-                        dbc.Row(
-                            children=(
-                                dbc.Col(
-                                    children=[
-                                        dbc.Card(
-                                            [
-                                                dbc.Row(
-                                                    [preview_title],
-                                                ),
-                                                horz_line,
-                                                dbc.Row(
-                                                    dbc.Col(imagePreview),
-                                                    justify="center",
-                                                    align="center",
-                                                ),
-                                            ],
-                                            body=True,
-                                        ),
-                                    ],
-                                    width="auto",
-                                    md=12,
-                                ),
+                        md=3,
+                        align="start",
+                    ),
+                    dbc.Col(
+                        children=[
+                            dbc.Row(
+                                children=[
+                                    graphWithLoadingAnimation,
+                                    dcc.Tooltip(
+                                        id="mainGraphTooltip", direction="right"
+                                    ),
+                                    dcc.Download(id="mainGraphDownload"),
+                                ],
+                                style={"height": "70vh"},
                             ),
-                            justify="center",
-                            align="center",
-                        ),
-                        horz_line,
-                    ],
-                    md=8,
-                ),
-            ],
-            style={"height": "50vh"},
-            justify="center",
-            align="start",
-        ),
-    ],
-    fluid=True,
-)
+                        ],
+                        md=9,
+                    ),
+                ],
+                align="center",
+            ),
+            horz_line,
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dbc.Card(
+                                [
+                                    dbc.Row(search_preview_main_title),
+                                    dbc.Row(
+                                        [image_search_title],
+                                    ),
+                                    horz_line,
+                                    dbc.Row(
+                                        [
+                                            dbc.Col(
+                                                [preview_test_image],
+                                                style={"max-height": "15vh"},
+                                                md=6,
+                                            ),
+                                            dbc.Col([image_file_info], md=6),
+                                        ]
+                                    ),
+                                    horz_line,
+                                    dbc.Row(
+                                        [
+                                            dbc.Col(search_preview_results_title),
+                                            dbc.Row([search_preview]),
+                                        ],
+                                        justify="center",
+                                        align="center",
+                                    ),
+                                ],
+                                body=True,
+                            ),
+                        ],
+                        md=4,
+                    ),
+                    dbc.Col(
+                        children=[
+                            graph2D,
+                            dcc.Tooltip(id="graph2DTooltip", direction="right"),
+                            dcc.Download(id="graph2DDownload"),
+                            horz_line,
+                            dbc.Row(
+                                children=(
+                                    dbc.Col(
+                                        children=[
+                                            dbc.Card(
+                                                [
+                                                    dbc.Row(
+                                                        [preview_title],
+                                                    ),
+                                                    horz_line,
+                                                    dbc.Row(
+                                                        dbc.Col(imagePreview),
+                                                        justify="center",
+                                                        align="center",
+                                                    ),
+                                                ],
+                                                body=True,
+                                            ),
+                                        ],
+                                        width="auto",
+                                        md=12,
+                                    ),
+                                ),
+                                justify="center",
+                                align="center",
+                            ),
+                            horz_line,
+                        ],
+                        md=8,
+                    ),
+                ],
+                style={"height": "50vh"},
+                justify="center",
+                align="start",
+            ),
+        ],
+        fluid=True,
+    )
+
+
+app.layout = serve_layout
+
 
 ################################################################################
 """ Callback fxns: """
@@ -503,23 +517,29 @@ app.layout = dbc.Container(
         Output("upload_image_file_button", "disabled"),
     ],
     [Input("upload-image-folder", "contents")],
-    State("upload-image-folder", "filename"),
+    [
+        State("upload-image-folder", "filename"),
+        State("session-id", "data"),
+    ],
 )
-def uploadData(content, filename):
+def uploadData(content, filename, session_id):
     # the content needs to be split. It contains the type and the real content
-    global dataset_obj
     if content is not None:
+        global redis_client
         content_type, content_str = content.split(",")
-        dataset_obj = dataset_obj.reset_dataset()
         # Create Dataset object, remove the extension part (.zip) from the filename
-        dataset_obj.name = filename.split(".")[0]
+        dataset_name = filename.split(".")[0]
+        # store dataset name in redis
+        if not redis_client.sismember(f"{session_id}:datasets", dataset_name):
+            redis_client.sadd(f"{session_id}:datasets", dataset_name)
+            decode_and_extract_zip(session_id, dataset_name, content_str)
+        # Update the current dataset being used by user
+        redis_client.set(f"{session_id}:curr_dataset", dataset_name)
         # read uploaded data and create ZipFile obj
-        dataset_obj.decode_and_extract_zip(content_str)
-        dataset_obj.load_features_paths()
         outputText = create_LR_label(
             id="file_info_label",
             leftText="[FILE]:",
-            rightText=dataset_obj.name,
+            rightText=dataset_name,
         )
         return [True], outputText, False, False
     return no_update, no_update, no_update, no_update
@@ -603,25 +623,48 @@ def uploadData(content, filename):
         State("min_dist_slider", "value"),
         State("min_cluster_size_slider", "value"),
         State("min_samples_slider", "value"),
+        State("session-id", "data"),
     ],
 )
 def update_output(
-    n_clicks, dataProcessedFlag, n_neighbors, min_dist, min_cluster_size, min_samples
+    n_clicks,
+    dataProcessedFlag,
+    n_neighbors,
+    min_dist,
+    min_cluster_size,
+    min_samples,
+    session_id,
 ):
     # After feature extraction, enable 3D graph gen button
     if dataProcessedFlag:
+        global redis_client
         # Generate the 3D graph and update global variable
-        figure = generate_fig_3D(
-            dataset_obj, n_neighbors, min_dist, min_cluster_size, min_samples
+        dataset_name = redis_client.get(f"{session_id}:curr_dataset")
+        figure, percent_clustered = generate_fig_3D(
+            redis_client,
+            session_id,
+            dataset_name,
+            n_neighbors,
+            min_dist,
+            min_cluster_size,
+            min_samples,
         )
         # Output Clustering statistics
         output_text = create_LR_label(
             id="percentClusteredText",
             leftText="[INFO]:",
-            rightText=f"{dataset_obj.calculate_percent_clustered()}% clustered",
+            rightText=f"{percent_clustered}% clustered",
         )
         # arrange zip files to create download
-        dataset_obj.create_clusters_zip()
+        create_clusters_zip(
+            redis_client,
+            session_id,
+            dataset_name,
+            n_neighbors,
+            min_dist,
+            min_cluster_size,
+            min_samples,
+        )
         return figure, [True], output_text, False
     else:
         return no_update, no_update, no_update, no_update
@@ -633,17 +676,43 @@ def update_output(
 @app.callback(
     [Output("graph2D", "figure")],
     [Input("dataClusteredFlag", "data")],
-    [State("n_neighbors_slider", "value"), State("min_dist_slider", "value")],
+    [
+        State("n_neighbors_slider", "value"),
+        State("min_dist_slider", "value"),
+        State("min_cluster_size_slider", "value"),
+        State("min_samples_slider", "value"),
+        State("session-id", "data"),
+    ],
 )
-def create_graph_2D(dataClusteredFlag, n_neighbors_value, min_dist_value):
+def create_graph_2D(
+    dataClusteredFlag,
+    n_neighbors,
+    min_dist,
+    min_cluster_size,
+    min_samples,
+    session_id,
+):
     if dataClusteredFlag:
+        global redis_client
         # Calculate UMAP embeddings with two components.
-        embeddings_2D = dataset_obj.setup_umap(
-            n_neighbors_value, min_dist_value, n_components=2
+        dataset_name = redis_client.get(f"{session_id}:curr_dataset")
+        embeddings_2D = setup_umap(
+            redis_client,
+            session_id,
+            dataset_name,
+            n_neighbors,
+            min_dist,
+            n_components=2,
         )
-        # Use localinputdata (global) to get precalculated 3D labels
-        # Make 2D px scattergl graph and update callback
-        fig = generate_fig_2D(embeddings_2D, dataset_obj.labels)
+        labels = get_labels(
+            session_id,
+            dataset_name,
+            n_neighbors,
+            min_dist,
+            min_cluster_size,
+            min_samples,
+        )
+        fig = generate_fig_2D(embeddings_2D, labels)
 
         return [fig]
     else:
@@ -660,14 +729,18 @@ def create_graph_2D(dataClusteredFlag, n_neighbors_value, min_dist_value):
         Output("mainGraphTooltip", "children"),
     ],
     [Input("mainGraph", "hoverData")],
-    [State("dataClusteredFlag", "data")],
+    [
+        State("dataClusteredFlag", "data"),
+        State("session-id", "data"),
+    ],
 )
-def display_hover(hoverData, dataClusteredFlag):
+def display_hover(hoverData, dataClusteredFlag, session_id):
     if (hoverData is None) or (not dataClusteredFlag):
         return False, no_update, no_update
+    dataset_name = redis_client.get(f"{session_id}:curr_dataset")
     # Load image with pillow
     hover_img_index = hoverData["points"][0]["pointNumber"]
-    im_uri = dataset_obj.gen_img_uri(hover_img_index)
+    im_uri = gen_img_uri(redis_client, session_id, dataset_name, hover_img_index)
 
     # demo only shows the first point, but other points may also be available
     hover_data = hoverData["points"][0]
@@ -692,13 +765,15 @@ def display_hover(hoverData, dataClusteredFlag):
         Output("graph2DTooltip", "children"),
     ],
     [Input("graph2D", "hoverData")],
+    State("session-id", "data"),
 )
-def display_hover2D(hoverData):
+def display_hover2D(hoverData, session_id):
     if hoverData is None:
         return False, no_update, no_update
     # Load image with pillow
+    dataset_name = redis_client.get(f"{session_id}:curr_dataset")
     hover_img_index = hoverData["points"][0]["pointNumber"]
-    im_uri = dataset_obj.gen_img_uri(hover_img_index)
+    im_uri = gen_img_uri(redis_client, session_id, dataset_name, hover_img_index)
     # demo only shows the first point, but other points may also be available
     hover_data = hoverData["points"][0]
     bbox = hover_data["bbox"]
@@ -718,11 +793,14 @@ def display_hover2D(hoverData):
 @app.callback(
     Output("mainGraphDownload", "data"),
     Input("mainGraph", "clickData"),
+    State("session-id", "data"),
     prevent_initial_call=True,
 )
-def func(clickData):
+def func(clickData, session_id):
+    dataset_name = redis_client.get(f"{session_id}:curr_dataset")
+    img_paths = redis_client.get(f"{session_id}:{dataset_name}:img_paths")
     clicked_img_idx = clickData["points"][0]["pointNumber"]
-    image_path = dataset_obj.img_paths[clicked_img_idx]
+    image_path = img_paths[clicked_img_idx]
     return dcc.send_file(image_path)
 
 
@@ -732,12 +810,14 @@ def func(clickData):
 @app.callback(
     Output("graph2DDownload", "data"),
     Input("graph2D", "clickData"),
+    State("session-id", "data"),
     prevent_initial_call=True,
 )
-def func(clickData):
-    print("entered 2d click fxn")
+def func(clickData, session_id):
+    dataset_name = redis_client.get(f"{session_id}:curr_dataset")
+    img_paths = redis_client.get(f"{session_id}:{dataset_name}:img_paths")
     clicked_img_idx = clickData["points"][0]["pointNumber"]
-    image_path = dataset_obj.img_paths[clicked_img_idx]
+    image_path = img_paths[clicked_img_idx]
     return dcc.send_file(image_path)
 
 
@@ -763,7 +843,7 @@ def display_selected_data(selectedData):
             idx = points[i]["pointNumber"]
             selected_img_idxs.append(idx)
 
-        dataset_obj.prepare_preview_download(selected_img_idxs)
+        prepare_preview_download(selected_img_idxs)
 
         return gen_img_preview(dataset_obj, selected_img_idxs), False
     else:
