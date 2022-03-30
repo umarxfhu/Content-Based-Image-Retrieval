@@ -118,6 +118,8 @@ def load_features_paths(session_id: str, dataset_name: str, redis_client: Redis)
         img_paths_json_bytes = orjson.dumps(img_paths)
         redis_client.set(f"{session_id}:{dataset_name}:img_paths", img_paths_json_bytes)
 
+    return features
+
 
 def setup_umap(
     redis_client, session_id, dataset_name, n_neighbors, min_dist, n_components=3
@@ -148,6 +150,7 @@ def setup_umap(
             f"[INFO][STARTED]: Dimensionality reduction... this could take a few minutes."
         )
         features = load_features_paths(session_id, dataset_name, redis_client)
+        print("features before umapping:", features)
         embeddings = UMAP(
             n_neighbors=n_neighbors,
             min_dist=min_dist,
@@ -317,11 +320,11 @@ def gen_img_uri(redis_client: Redis, session_id, dataset_name, img_index) -> str
 
 
 def prepare_preview_download(
-    redis_client: Redis, session_id, dataset_name, selected_img_idxs
+    redis_client: Redis, session_id, dataset_name, selected_img_idxs, filename
 ):
     dataset_dir = f"assets/{session_id}/{dataset_name}"
-    preview_files_dir = os.path.join(dataset_dir, "preview_2D")
-    preview_zip_path = os.path.join(dataset_dir, "preview_2D.zip")
+    preview_files_dir = os.path.join(dataset_dir, filename)
+    preview_zip_path = os.path.join(dataset_dir, filename + ".zip")
     # remove previous files
     if os.path.exists(preview_files_dir):
         shutil.rmtree(preview_files_dir)

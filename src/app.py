@@ -287,7 +287,7 @@ upload_image_file_button = dcc.Upload(
 download_search_button = gen_download_button(
     id="download_search_button",
     children=["Download"],
-    href=app.get_asset_url("search.zip"),
+    href="",
 )
 image_search_title = html.Div(
     children=[
@@ -556,6 +556,7 @@ def uploadData(content, filename, session_id):
         Output("image_file_info", "children"),
         Output("preview_test_image", "children"),
         Output("search_preview", "children"),
+        Output("download_search_button", "href"),
     ],
     [Input("upload_image_file_button", "contents")],
     [
@@ -603,13 +604,23 @@ def uploadData(content, filename, session_id):
             img_bytes = base64.b64decode(content.split("base64,")[-1])
             f.write(img_bytes)
         # print("test_image_path is:", test_image_path)
-        # search for 6 similar imagesz
+        # search for 6 similar images
         result_idxs = find_similar_imgs(session_id, dataset_name, test_image_path)
-        # print("result_idxs", result_idxs[0])
         # display them
-        result_preview = gen_img_preview(result_idxs[0], scale=2.5)
-        return output_filename, test_image, result_preview
-    return no_update, no_update, no_update
+        result_preview = gen_img_preview(
+            redis_client, session_id, dataset_name, result_idxs[0], scale=2.5
+        )
+        prepare_preview_download(
+            redis_client,
+            session_id,
+            dataset_name,
+            result_idxs[0],
+            "image_search/search_results",
+        )
+        dataset_dir = f"assets/{session_id}/{dataset_name}/image_search"
+        preview_zip_path = os.path.join(dataset_dir, "search_results.zip")
+        return output_filename, test_image, result_preview, preview_zip_path
+    return no_update, no_update, no_update, no_update
 
 
 ########################################################################
@@ -621,6 +632,7 @@ def uploadData(content, filename, session_id):
         Output("dataClusteredFlag", "data"),
         Output("dataInfo", "children"),
         Output("download_clusters_button", "disabled"),
+        Output("download_clusters_button", "href"),
     ],
     [Input("graph3DButton", "n_clicks")],
     [
@@ -671,9 +683,12 @@ def update_output(
             min_cluster_size,
             min_samples,
         )
-        return figure, [True], output_text, False
+        dataset_dir = f"assets/{session_id}/{dataset_name}"
+        cluster_zip_path = os.path.join(dataset_dir, "clusters.zip")
+
+        return figure, [True], output_text, False, cluster_zip_path
     else:
-        return no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update
 
 
 ########################################################################
@@ -838,6 +853,7 @@ def func(clickData, session_id):
     [
         Output("imagePreview", "children"),
         Output("download_preview_button", "disabled"),
+        Output("download_preview_button", "href"),
     ],
     [Input("graph2D", "selectedData")],
     State("session-id", "data"),
@@ -857,12 +873,18 @@ def display_selected_data(selectedData, session_id):
 
         dataset_name = redis_client.get(f"{session_id}:curr_dataset")
         prepare_preview_download(
-            redis_client, session_id, dataset_name, selected_img_idxs
+            redis_client, session_id, dataset_name, selected_img_idxs, "preview_2D"
         )
-        return gen_img_preview(selected_img_idxs), False
+        dataset_dir = f"assets/{session_id}/{dataset_name}"
+        preview_zip_path = os.path.join(dataset_dir, "preview_2D.zip")
+        return (
+            gen_img_preview(redis_client, session_id, dataset_name, selected_img_idxs),
+            False,
+            preview_zip_path,
+        )
     else:
         # no points selected
-        return no_update, no_update
+        return no_update, no_update, no_update
 
 
 if __name__ == "__main__":

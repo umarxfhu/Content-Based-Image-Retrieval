@@ -1,5 +1,6 @@
 from dash import html, dcc
 from numpy import place
+from redis import Redis
 import dash_bootstrap_components as dbc
 
 from dataset import gen_img_uri
@@ -7,7 +8,9 @@ from dataset import gen_img_uri
 # Only certain component building functions are here
 
 
-def gen_img_preview(selected_img_idxs, scale=1):
+def gen_img_preview(
+    redis_client: Redis, session_id, dataset_name, selected_img_idxs, scale=1
+):
     """Generate the selection preview when the lasso/box tool on 2D graph is used.
     inputs:
         - img_paths: (type: string) Component identifier for callback use
@@ -24,8 +27,8 @@ def gen_img_preview(selected_img_idxs, scale=1):
                         "width": f"{10*scale}%",
                         "float": "left",
                         "position": "relative",
-                        "padding-top": 1,
-                        "padding-right": 1,
+                        "padding-top": 3,
+                        "padding-right": 3,
                     },
                 ),
             ]
@@ -34,7 +37,7 @@ def gen_img_preview(selected_img_idxs, scale=1):
     # Functionality
     imagesList = []
     for idx in selected_img_idxs:
-        image_uri = gen_img_uri(idx)
+        image_uri = gen_img_uri(redis_client, session_id, dataset_name, idx)
         imagesList.append(generate_thumbnail(image_uri))
 
     return imagesList

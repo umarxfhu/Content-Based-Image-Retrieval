@@ -62,10 +62,11 @@ def generate_fig_2D(embeddings, labels):
     """inputs: data: dictionary with features and image paths
     outputs: scatterPlot: plotly express 2D object with updates"""
     # Create 2D scatter graph with WebGL to handle large datasets
+    print("embeddings before graphing:", embeddings[0])
     scatterPlot = go.Figure(
         data=go.Scattergl(
-            x=embeddings[:, 0],
-            y=embeddings[:, 1],
+            x=embeddings[0][:, 0],
+            y=embeddings[0][:, 1],
             mode="markers",
             marker=dict(
                 color=labels, colorscale="Viridis", line_width=0.5, showscale=True
