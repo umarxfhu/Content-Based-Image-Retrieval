@@ -14,6 +14,7 @@ import torch
 import pickle
 import base64
 import shutil
+import orjson
 import hdbscan
 import numpy as np
 import pandas as pd
@@ -24,66 +25,6 @@ from zipfile import ZipFile
 
 from torchvision import transforms, models
 from featureExtraction import extract_features_paths
-
-
-class Dataset:
-    def __init__(self):
-        self.name = None
-        self.directory = None
-        self.img_paths = None
-        self.features = None
-        self.embeddings = None
-        self.labels = None
-        self.test_image = None
-        self.index = None
-
-    def find_similar_imgs(self, test_image_path: str) -> list:
-        transform = transforms.Compose(
-            [
-                transforms.Resize(size=[224, 224], interpolation=2),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
-            ]
-        )
-
-        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-        print("[INFO] Using Device:", DEVICE)
-        model = models.resnet101(pretrained=True, progress=True)
-        model.to(DEVICE)
-
-        def pooling_output(x):
-            for layer_name, layer in model._modules.items():
-                x = layer(x)
-                if layer_name == "avgpool":
-                    break
-            return x
-
-        PIL_img = Image.open(test_image_path).convert("RGB")
-        input_tensor = transform(PIL_img)
-        input_tensor = input_tensor.view(1, *input_tensor.shape)
-
-        with torch.no_grad():
-            query_descriptors = pooling_output(input_tensor.to(DEVICE)).cpu().numpy()
-            distance, indices = self.index.search(
-                query_descriptors.reshape(1, 2048), 12
-            )
-
-        return indices
-
-    @classmethod
-    def del_folder_contents(cls, folder: str) -> None:
-        if os.path.exists(folder):
-            for filename in os.listdir(folder):
-                file_path = os.path.join(folder, filename)
-                try:
-                    if os.path.isfile(file_path) or os.path.islink(file_path):
-                        os.unlink(file_path)
-                    elif os.path.isdir(file_path):
-                        shutil.rmtree(file_path)
-                except Exception as e:
-                    print("Failed to delete %s. Reason: %s" % (file_path, e))
 
 
 ################################################################################
@@ -173,7 +114,9 @@ def load_features_paths(session_id: str, dataset_name: str, redis_client: Redis)
         pickle.dump(features, open(path_to_features_pickle, "wb"))
         pickle.dump(index, open(path_to_index_pickle, "wb"))
         # Cache img_paths on redis as they are needed for rapid access later
-        redis_client.set(f"{session_id}:{dataset_name}:img_paths", img_paths)
+        # serialize, returns byte instead of string
+        img_paths_json_bytes = orjson.dumps(img_paths)
+        redis_client.set(f"{session_id}:{dataset_name}:img_paths", img_paths_json_bytes)
 
 
 def setup_umap(
@@ -193,7 +136,9 @@ def setup_umap(
     embeddings_pickle = f"{dataset_name}_umap_{n_components}D_embeddings_{n_neighbors}_{min_dist_str}.pickle"
     # create paths to these resource files
     path_to_embeddings_pickle = os.path.join(resources_dir, embeddings_pickle)
-    # If img_paths/features for this dataset are available, use them, else save after generating
+    # If embeddings for this dataset are available, use them, else save after generating
+    if not os.path.exists(resources_dir):
+        os.makedirs(resources_dir)
     resources = os.listdir(resources_dir)
     if embeddings_pickle in resources:
         with open(path_to_embeddings_pickle, "rb") as f:
@@ -240,7 +185,7 @@ def generate_clusters(
         - [UMAP]: To reduce feature dimensionality to create embeddings.
         - [HDBSCAN]: To cluster feature embeddings."""
     embeddings, n_components, min_dist_str = setup_umap(
-        session_id, dataset_name, n_neighbors, min_dist
+        redis_client, session_id, dataset_name, n_neighbors, min_dist
     )
     print(f"[INFO][STARTED]: Clustering with HDBSCAN.")
     labels = hdbscan.HDBSCAN(
@@ -250,7 +195,7 @@ def generate_clusters(
     print(f"[INFO][DONE]: Clustering with HDBSCAN.")
     # calculate percentage of the images that were clustered (i.e not labelled as noise)
     num_clustered = labels >= 0
-    img_paths = redis_client.get(f"{session_id}:{dataset_name}:img_paths")
+    img_paths = orjson.loads(redis_client.get(f"{session_id}:{dataset_name}:img_paths"))
     percent_clustered = round(100 * np.sum(num_clustered) / len(img_paths), 2)
 
     resources_dir = f"assets/{session_id}/{dataset_name}/resources"
@@ -302,7 +247,7 @@ def create_clusters_zip(
     min_cluster_size,
     min_samples,
 ):
-    img_paths = redis_client.get(f"{session_id}:{dataset_name}:img_paths")
+    img_paths = orjson.loads(redis_client.get(f"{session_id}:{dataset_name}:img_paths"))
 
     labels = get_labels(
         session_id, dataset_name, n_neighbors, min_dist, min_cluster_size, min_samples
@@ -361,21 +306,23 @@ def gen_img_uri(redis_client: Redis, session_id, dataset_name, img_index) -> str
     Returns:
         img_uri (str): str containing image bytes viewable by html.Img
     """
-    img_paths = redis_client.get(f"{session_id}:{dataset_name}:img_paths")
+    img_paths = orjson.loads(redis_client.get(f"{session_id}:{dataset_name}:img_paths"))
     im = Image.open(img_paths[img_index])
     # dump it to base64
     buffer = io.BytesIO()
     im.save(buffer, format="jpeg")
     encoded_image = base64.b64encode(buffer.getvalue()).decode()
     im_url = "data:image/jpeg;base64, " + encoded_image
-
     return im_url
 
 
-def prepare_preview_download(self, selected_img_idxs):
-    preview_files_dir = os.path.join("assets", "preview_2D")
-    preview_zip_path = os.path.join("assets", "preview_2D.zip")
-    # remove previous file
+def prepare_preview_download(
+    redis_client: Redis, session_id, dataset_name, selected_img_idxs
+):
+    dataset_dir = f"assets/{session_id}/{dataset_name}"
+    preview_files_dir = os.path.join(dataset_dir, "preview_2D")
+    preview_zip_path = os.path.join(dataset_dir, "preview_2D.zip")
+    # remove previous files
     if os.path.exists(preview_files_dir):
         shutil.rmtree(preview_files_dir)
     if not os.path.exists(preview_files_dir):
@@ -383,8 +330,63 @@ def prepare_preview_download(self, selected_img_idxs):
     if os.path.exists(preview_zip_path):
         os.remove(preview_zip_path)
     # create directory with the preview images copied from original dataset
+    img_paths = orjson.loads(redis_client.get(f"{session_id}:{dataset_name}:img_paths"))
     for idx in selected_img_idxs:
-        img_path = self.img_paths[idx]
+        img_path = img_paths[idx]
         shutil.copy(img_path, preview_files_dir)
-    Dataset.make_archive(preview_files_dir, preview_files_dir + ".zip")
-    return
+    make_archive(preview_files_dir, preview_files_dir + ".zip")
+
+
+def del_folder_contents(folder: str) -> None:
+    if os.path.exists(folder):
+        for filename in os.listdir(folder):
+            file_path = os.path.join(folder, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            except Exception as e:
+                print("Failed to delete %s. Reason: %s" % (file_path, e))
+
+
+def find_similar_imgs(session_id, dataset_name, test_image_path: str) -> list:
+    transform = transforms.Compose(
+        [
+            transforms.Resize(size=[224, 224], interpolation=2),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
+
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    print("[INFO] Using Device:", DEVICE)
+    model = models.resnet101(pretrained=True, progress=True)
+    model.to(DEVICE)
+
+    def pooling_output(x):
+        for layer_name, layer in model._modules.items():
+            x = layer(x)
+            if layer_name == "avgpool":
+                break
+        return x
+
+    PIL_img = Image.open(test_image_path).convert("RGB")
+    input_tensor = transform(PIL_img)
+    input_tensor = input_tensor.view(1, *input_tensor.shape)
+
+    # Create path name for resources
+    resources_dir = f"assets/{session_id}/{dataset_name}/resources"
+    index_pickle = f"{dataset_name}_index.pickle"
+    path_to_index_pickle = os.path.join(resources_dir, index_pickle)
+
+    resources = os.listdir(resources_dir)
+    if index_pickle in resources:
+        with open(path_to_index_pickle, "rb") as f:
+            index = pickle.load(f)
+
+    with torch.no_grad():
+        query_descriptors = pooling_output(input_tensor.to(DEVICE)).cpu().numpy()
+        distance, indices = index.search(query_descriptors.reshape(1, 2048), 12)
+
+    return indices

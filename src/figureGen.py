@@ -22,7 +22,7 @@ def generate_fig_3D(
     min_cluster_size,
     min_samples,
 ):
-    """[TODO]inputs: data: dictionary with features and image paths
+    """TODO: UPDATE README inputs: data: dictionary with features and image paths
     outputs: scatterPlot: plotly express 3D object with updates"""
 
     embeddings, labels, percent_clustered = generate_clusters(

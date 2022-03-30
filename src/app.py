@@ -1,6 +1,6 @@
 import os
-import sys
 import uuid
+import orjson
 import base64
 
 import flask
@@ -16,6 +16,9 @@ from dataset import (
     setup_umap,
     get_labels,
     gen_img_uri,
+    prepare_preview_download,
+    del_folder_contents,
+    find_similar_imgs,
 )
 from componentBuilder import (
     create_LR_label,
@@ -557,9 +560,10 @@ def uploadData(content, filename, session_id):
     [Input("upload_image_file_button", "contents")],
     [
         State("upload_image_file_button", "filename"),
+        State("session-id", "data"),
     ],
 )
-def uploadData(content, filename):
+def uploadData(content, filename, session_id):
     if content is not None:
         content_type, content_str = content.split(",")
         output_filename = (
@@ -572,6 +576,7 @@ def uploadData(content, filename):
                 },
             ),
         )
+        # TODO: Why am I using content and not content_str? maybe cuz html img default something?
         test_image = html.Div(
             [
                 html.Img(
@@ -588,20 +593,21 @@ def uploadData(content, filename):
         )
         # content is an encoded picture
         # decode picture and save as file
-        test_image_folder = "assets/image_search/input/"
+        dataset_name = redis_client.get(f"{session_id}:curr_dataset")
+        test_image_folder = f"assets/{session_id}/{dataset_name}/image_search/input/"
         if not os.path.exists(test_image_folder):
             os.makedirs(test_image_folder)
-        Dataset.del_folder_contents(test_image_folder)
+        del_folder_contents(test_image_folder)
         test_image_path = os.path.join(test_image_folder, filename)
         with open(test_image_path, "wb") as f:
             img_bytes = base64.b64decode(content.split("base64,")[-1])
             f.write(img_bytes)
         # print("test_image_path is:", test_image_path)
         # search for 6 similar imagesz
-        result_idxs = dataset_obj.find_similar_imgs(test_image_path)
+        result_idxs = find_similar_imgs(session_id, dataset_name, test_image_path)
         # print("result_idxs", result_idxs[0])
         # display them
-        result_preview = gen_img_preview(dataset_obj, result_idxs[0], scale=2.5)
+        result_preview = gen_img_preview(result_idxs[0], scale=2.5)
         return output_filename, test_image, result_preview
     return no_update, no_update, no_update
 
@@ -737,6 +743,7 @@ def create_graph_2D(
 def display_hover(hoverData, dataClusteredFlag, session_id):
     if (hoverData is None) or (not dataClusteredFlag):
         return False, no_update, no_update
+    global redis_client
     dataset_name = redis_client.get(f"{session_id}:curr_dataset")
     # Load image with pillow
     hover_img_index = hoverData["points"][0]["pointNumber"]
@@ -771,6 +778,7 @@ def display_hover2D(hoverData, session_id):
     if hoverData is None:
         return False, no_update, no_update
     # Load image with pillow
+    global redis_client
     dataset_name = redis_client.get(f"{session_id}:curr_dataset")
     hover_img_index = hoverData["points"][0]["pointNumber"]
     im_uri = gen_img_uri(redis_client, session_id, dataset_name, hover_img_index)
@@ -797,8 +805,9 @@ def display_hover2D(hoverData, session_id):
     prevent_initial_call=True,
 )
 def func(clickData, session_id):
+    global redis_client
     dataset_name = redis_client.get(f"{session_id}:curr_dataset")
-    img_paths = redis_client.get(f"{session_id}:{dataset_name}:img_paths")
+    img_paths = orjson.loads(redis_client.get(f"{session_id}:{dataset_name}:img_paths"))
     clicked_img_idx = clickData["points"][0]["pointNumber"]
     image_path = img_paths[clicked_img_idx]
     return dcc.send_file(image_path)
@@ -814,8 +823,9 @@ def func(clickData, session_id):
     prevent_initial_call=True,
 )
 def func(clickData, session_id):
+    global redis_client
     dataset_name = redis_client.get(f"{session_id}:curr_dataset")
-    img_paths = redis_client.get(f"{session_id}:{dataset_name}:img_paths")
+    img_paths = orjson.loads(redis_client.get(f"{session_id}:{dataset_name}:img_paths"))
     clicked_img_idx = clickData["points"][0]["pointNumber"]
     image_path = img_paths[clicked_img_idx]
     return dcc.send_file(image_path)
@@ -830,12 +840,14 @@ def func(clickData, session_id):
         Output("download_preview_button", "disabled"),
     ],
     [Input("graph2D", "selectedData")],
+    State("session-id", "data"),
     prevent_initial_call=True,
 )
-def display_selected_data(selectedData):
+def display_selected_data(selectedData, session_id):
     """get all the selected point idx from the selectedData dictionary
     then get the img path for each idx, then create previwe with paths"""
     if selectedData["points"]:
+        global redis_client
         points = selectedData["points"]
         selected_img_idxs = []
 
@@ -843,9 +855,11 @@ def display_selected_data(selectedData):
             idx = points[i]["pointNumber"]
             selected_img_idxs.append(idx)
 
-        prepare_preview_download(selected_img_idxs)
-
-        return gen_img_preview(dataset_obj, selected_img_idxs), False
+        dataset_name = redis_client.get(f"{session_id}:curr_dataset")
+        prepare_preview_download(
+            redis_client, session_id, dataset_name, selected_img_idxs
+        )
+        return gen_img_preview(selected_img_idxs), False
     else:
         # no points selected
         return no_update, no_update

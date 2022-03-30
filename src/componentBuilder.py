@@ -1,12 +1,13 @@
 from dash import html, dcc
 from numpy import place
-from dataset import Dataset
 import dash_bootstrap_components as dbc
+
+from dataset import gen_img_uri
 
 # Only certain component building functions are here
 
 
-def gen_img_preview(dataset_obj: Dataset, selected_img_idxs, scale=1):
+def gen_img_preview(selected_img_idxs, scale=1):
     """Generate the selection preview when the lasso/box tool on 2D graph is used.
     inputs:
         - img_paths: (type: string) Component identifier for callback use
@@ -33,7 +34,7 @@ def gen_img_preview(dataset_obj: Dataset, selected_img_idxs, scale=1):
     # Functionality
     imagesList = []
     for idx in selected_img_idxs:
-        image_uri = dataset_obj.gen_img_uri(idx)
+        image_uri = gen_img_uri(idx)
         imagesList.append(generate_thumbnail(image_uri))
 
     return imagesList
