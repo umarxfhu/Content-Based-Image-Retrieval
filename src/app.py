@@ -39,10 +39,6 @@ dataset_obj = Dataset()
 ################################################################################
 
 server = flask.Flask(__name__)
-server.config.from_object(
-    "config.Config"
-)  # Set the configuration variables to the flask application
-cache = Cache(server)  # Initialize Cache
 app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.CYBORG])
 
 
