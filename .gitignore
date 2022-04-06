@@ -3,6 +3,7 @@
 
 # ignore assets folder as it holds large data
 src/assets/
+src/debug_resources/
 
 ### Flask ###
 instance/*

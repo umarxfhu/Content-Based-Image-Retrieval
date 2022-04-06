@@ -20,6 +20,15 @@ services:
               count: 1
               capabilities: [ gpu ]
 
+  # worker:
+  #   container_name: worker-container
+  #   stdin_open: true # docker run -i
+  #   tty: true # docker run -t
+  #   build: ./worker
+  #   links:
+  #     - redis
+  #   entrypoint: python worker.py
+
   redis:
     image: redis
     container_name: redis-container

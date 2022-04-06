@@ -9,6 +9,7 @@ except:
 
 import os
 import io
+import gc
 import faiss
 import torch
 import pickle
@@ -26,10 +27,66 @@ from zipfile import ZipFile
 from torchvision import transforms, models
 from featureExtraction import extract_features_paths
 
+debug = False
+
+
+def get_resource_dir(debug, session_id, dataset_name):
+    if debug:
+        resources_dir = f"debug_resources/resources"
+    else:
+        resources_dir = f"assets/{session_id}/{dataset_name}/resources"
+    return resources_dir
+
 
 ################################################################################
 """Functions for Dataset Processing"""
 ################################################################################
+
+
+def arrange_unzip_dir(unzip_dir, dataset_name):
+    """The unzipped files get stored into assets folder as files or a directory containing files."""
+    # A folder was created when they uploaded
+    filenames = os.listdir(unzip_dir)
+    if len(filenames) == 0:
+        print("[DEBUGLOG]: Nothing was uploaded")
+    else:
+        if len(filenames) == 1:
+            print("[DEBUG]: Uploaded zip file was stored as a folder.", filenames)
+        else:
+            print("[INFO]: Uploaded zip file stored as individual files.")
+            # joining into the path of this folder that we want to remove
+            destination_dir = os.path.join(unzip_dir, dataset_name)
+            os.makedirs(destination_dir)
+            for file_name in os.listdir(unzip_dir):
+                shutil.move(os.path.join(unzip_dir, file_name), destination_dir)
+
+
+def move_unzip_uploaded_file(session_id, file_name):
+    print("i here")
+    dataset_name = os.path.splitext(file_name[0])[0]
+    print("dataset_name", dataset_name)
+    user_dataset_dir = f"assets/{session_id}/{dataset_name}"
+    print("user_dataset_dir", user_dataset_dir)
+    temp_upload_dir = f"assets/temp/{session_id}"
+    print("temp_upload_dir", temp_upload_dir)
+    temp_zip_path = os.path.join(temp_upload_dir, file_name[0])
+    print("temp_zip_path", temp_zip_path)
+    user_unzip_path = os.path.join(user_dataset_dir, "unzipped")
+    print("user_unzip_path", user_unzip_path)
+
+    if not os.path.exists(user_unzip_path):
+        os.makedirs(user_unzip_path)
+    shutil.move(temp_zip_path, user_unzip_path)
+    file_path = os.path.join(user_unzip_path, f"{file_name[0]}")
+    print("file_path:", file_path)
+    with ZipFile(file_path, "r") as zipObj:
+        zipObj.extractall(user_unzip_path)
+    # remove the zip file
+    os.remove(file_path)
+    # clean dir structure if needed
+    arrange_unzip_dir(user_unzip_path, dataset_name)
+    # remove the temp dir
+    shutil.rmtree(temp_upload_dir)
 
 
 def decode_and_extract_zip(session_id: str, dataset_name: str, content_string: str):
@@ -40,28 +97,11 @@ def decode_and_extract_zip(session_id: str, dataset_name: str, content_string: s
         dataset_name (str): folder name to save the dataset under
         content_string (str): actual data string
     """
-
-    def arrange_unzip_dir(unzip_dir, dataset_name):
-        """The unzipped files get stored into assets folder as files or a directory containing files."""
-        # A folder was created when they uploaded
-        filenames = os.listdir(unzip_dir)
-        if len(filenames) == 0:
-            print("[DEBUGLOG]: Nothing was uploaded")
-        else:
-            if len(filenames) == 1:
-                print("[DEBUG]: Uploaded zip file was stored as a folder.", filenames)
-            else:
-                print("[INFO]: Uploaded zip file stored as individual files.")
-                # joining into the path of this folder that we want to remove
-                destination_dir = os.path.join(unzip_dir, dataset_name)
-                os.makedirs(destination_dir)
-                for file_name in os.listdir(unzip_dir):
-                    shutil.move(os.path.join(unzip_dir, file_name), destination_dir)
-
     # Decode the base64 string
     content_decoded = base64.b64decode(content_string)
     # Use BytesIO to handle the decoded content
     zip_str = io.BytesIO(content_decoded)
+    # del content_decoded
     # Now you can use ZipFile to take the BytesIO output
     zip_obj = ZipFile(zip_str, "r")
     # check if users unzip path exists, else create it
@@ -73,6 +113,7 @@ def decode_and_extract_zip(session_id: str, dataset_name: str, content_string: s
     os.makedirs(unzip_dir)
     zip_obj.extractall(unzip_dir)
     # correct for inconsistent unzipping (sometimes save as files or as folder with files)
+    gc.collect()
     arrange_unzip_dir(unzip_dir, dataset_name)
 
 
@@ -88,7 +129,8 @@ def load_features_paths(session_id: str, dataset_name: str, redis_client: Redis)
         redis_client (Redis):
     """
     # Create path name for resources
-    resources_dir = f"assets/{session_id}/{dataset_name}/resources"
+    resources_dir = get_resource_dir(debug, session_id, dataset_name)
+    print("resources_dir:", resources_dir)
     # create names for the uploaded files' potential features
     features_pickle = f"{dataset_name}_features.pickle"
     index_pickle = f"{dataset_name}_index.pickle"
@@ -101,6 +143,7 @@ def load_features_paths(session_id: str, dataset_name: str, redis_client: Redis)
         os.mkdir(resources_dir)
     resources = os.listdir(resources_dir)
     # load pickle of features if present
+    print("resources:", resources)
     if features_pickle and index_pickle in resources:
         with open(path_to_features_pickle, "rb") as f:
             features = pickle.load(f)
@@ -134,7 +177,7 @@ def setup_umap(
         min_dist_str = str(min_dist).split(".")[1]
 
     # Create path name for resources
-    resources_dir = f"assets/{session_id}/{dataset_name}/resources"
+    resources_dir = get_resource_dir(debug, session_id, dataset_name)
     embeddings_pickle = f"{dataset_name}_umap_{n_components}D_embeddings_{n_neighbors}_{min_dist_str}.pickle"
     # create paths to these resource files
     path_to_embeddings_pickle = os.path.join(resources_dir, embeddings_pickle)
@@ -142,6 +185,9 @@ def setup_umap(
     if not os.path.exists(resources_dir):
         os.makedirs(resources_dir)
     resources = os.listdir(resources_dir)
+
+    features = load_features_paths(session_id, dataset_name, redis_client)
+
     if embeddings_pickle in resources:
         with open(path_to_embeddings_pickle, "rb") as f:
             embeddings = pickle.load(f)
@@ -149,8 +195,7 @@ def setup_umap(
         print(
             f"[INFO][STARTED]: Dimensionality reduction... this could take a few minutes."
         )
-        features = load_features_paths(session_id, dataset_name, redis_client)
-        print("features before umapping:", features)
+        # print("features before umapping:", features)
         embeddings = UMAP(
             n_neighbors=n_neighbors,
             min_dist=min_dist,
@@ -201,7 +246,7 @@ def generate_clusters(
     img_paths = orjson.loads(redis_client.get(f"{session_id}:{dataset_name}:img_paths"))
     percent_clustered = round(100 * np.sum(num_clustered) / len(img_paths), 2)
 
-    resources_dir = f"assets/{session_id}/{dataset_name}/resources"
+    resources_dir = get_resource_dir(debug, session_id, dataset_name)
     # create paths to these resource files
     labels_pickle = f"{dataset_name}_labels_{n_components}D_{n_neighbors}_{min_dist_str}_{min_cluster_size}_{min_samples}.pickle"
     path_to_labels_pickle = os.path.join(resources_dir, labels_pickle)
@@ -227,7 +272,7 @@ def make_archive(source, destination):
 def get_labels(
     session_id, dataset_name, n_neighbors, min_dist, min_cluster_size, min_samples
 ):
-    resources_dir = f"assets/{session_id}/{dataset_name}/resources"
+    resources_dir = get_resource_dir(debug, session_id, dataset_name)
     # create paths to these resource files
     labels_pickle = f"{dataset_name}_labels_3D_{n_neighbors}_{min_dist}_{min_cluster_size}_{min_samples}.pickle"
     path_to_labels_pickle = os.path.join(resources_dir, labels_pickle)
@@ -379,7 +424,7 @@ def find_similar_imgs(session_id, dataset_name, test_image_path: str) -> list:
     input_tensor = input_tensor.view(1, *input_tensor.shape)
 
     # Create path name for resources
-    resources_dir = f"assets/{session_id}/{dataset_name}/resources"
+    resources_dir = get_resource_dir(debug, session_id, dataset_name)
     index_pickle = f"{dataset_name}_index.pickle"
     path_to_index_pickle = os.path.join(resources_dir, index_pickle)
 

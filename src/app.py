@@ -2,6 +2,8 @@ import os
 import uuid
 import orjson
 import base64
+import threading
+from datetime import datetime
 
 import flask
 import dash
@@ -10,8 +12,14 @@ from dash import html, dcc, no_update
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 
+# open source dash functionality
+# https://github.com/np-8/dash-uploader
+import dash_uploader as du
+
+# Local Modules
+from worker import poll_remove_user_data
 from dataset import (
-    decode_and_extract_zip,
+    move_unzip_uploaded_file,
     create_clusters_zip,
     setup_umap,
     get_labels,
@@ -30,29 +38,18 @@ from componentBuilder import (
 from figureGen import blankFig, generate_fig_3D, generate_fig_2D
 
 ################################################################################
-""" Global variables: """
-################################################################################
-
-config = {
-    "debug": True,
-    "assets": "assets",
-    "unzipped_dir": "assets/unzipped",
-    "resources_dir": "assets/resources",
-    "clusters_dir": "assets/clusters",
-}
-
-
-################################################################################
-""" Initialize Dash App: """
+""" Initialize Dash App, Redis, Uploader: """
 ################################################################################
 
 server = flask.Flask(__name__)
 # Initialize Cache
+# use host="127.0.0.1" if running redis server locally (without Docker)
 redis_client = Redis(host="redis", port=6379, db=0, decode_responses=True)
 # [TODO]: before deploying consider memory management i.e when should you clear redis
 redis_client.flushall()
 app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.CYBORG])
 
+du.configure_upload(app, "assets/temp")
 
 ################################################################################
 """ Dash Components: """
@@ -69,23 +66,23 @@ title = html.H4(
 # ------------------------------------------------------------------------------
 #   3D Graph and it's Control Components
 # ------------------------------------------------------------------------------
-uploadButton = dcc.Upload(
-    id="upload-image-folder",
-    children=["Drag/Select ZIP"],
-    style={
-        # 'width': '100%',
-        "height": "60px",
-        "lineHeight": "60px",
-        "borderWidth": "1px",
-        "borderStyle": "dashed",
-        "borderRadius": "5px",
-        "textAlign": "center",
-        "margin": "10px",
-    },
-    accept=".zip",
-    # Don't allow multiple files to be uploaded
-    multiple=False,
-)
+# uploadButton = dcc.Upload(
+#     id="upload-image-folder",
+#     children=["Drag/Select zip"],
+#     style={
+#         # 'width': '100%',
+#         "height": "60px",
+#         "lineHeight": "60px",
+#         "borderWidth": "1px",
+#         "borderStyle": "dashed",
+#         "borderRadius": "5px",
+#         "textAlign": "center",
+#         "margin": "10px",
+#     },
+#     accept=".zip",
+#     # Don't allow multiple files to be uploaded
+#     multiple=False,
+# )
 graphWithLoadingAnimation = dcc.Loading(
     children=[
         dcc.Graph(
@@ -357,13 +354,20 @@ jump_up_button = dbc.Button(
 ################################################################################
 """ Dash UI Layout: """
 ################################################################################
-
-
 def serve_layout():
     session_id = str(uuid.uuid4())
+    # add user id to redis list
     redis_client.rpush("users", session_id)
     return dbc.Container(
         [
+            # User timestamp updater
+            dcc.Interval(
+                id="interval-component",
+                interval=1 * 20000,  # 20000 milliseconds = 20 sec
+                n_intervals=0,
+            ),
+            # Empty div used since callbacks with no output are not allowed
+            html.Div(id="dummy1"),
             # In browser storage objects
             dcc.Store(id="session-id", data=session_id),
             dcc.Store(id="dataProcessedFlag", data=False),
@@ -378,7 +382,32 @@ def serve_layout():
                                     children=[
                                         dbc.Row(fileInfo),
                                         dbc.Row(dataInfo),
-                                        dbc.Row(uploadButton),
+                                        dbc.Row(
+                                            # This component is verbosely placed in layout as it
+                                            # requires session_id to be dynamically generated
+                                            html.Div(
+                                                du.Upload(
+                                                    id="dash_uploader",
+                                                    text="Drag/Select Zip",
+                                                    max_files=1,
+                                                    filetypes=["zip"],
+                                                    # changes default size breaks it when download starts
+                                                    default_style={
+                                                        "overflow": "hide",
+                                                        "minHeight": "2vh",
+                                                        "lineHeight": "2vh",
+                                                    },
+                                                    upload_id=session_id,
+                                                ),
+                                                style={  # wrapper div style
+                                                    "textAlign": "center",
+                                                    "width": "100%",
+                                                    # "height": "50px",
+                                                    "padding": "10px",
+                                                    "display": "inline-block",
+                                                },
+                                            ),
+                                        ),
                                         horz_line,
                                         dbc.Row(n_neighbors_slider),
                                         dbc.Row(min_dist_slider),
@@ -490,6 +519,8 @@ def serve_layout():
                                 align="center",
                             ),
                             horz_line,
+                            # content will be rendered in this element
+                            html.Div(id="page-content"),
                         ],
                         md=8,
                     ),
@@ -519,26 +550,30 @@ app.layout = serve_layout
         Output("graph3DButton", "disabled"),
         Output("upload_image_file_button", "disabled"),
     ],
-    [Input("upload-image-folder", "contents")],
+    [Input("dash_uploader", "isCompleted")],
     [
-        State("upload-image-folder", "filename"),
+        State("dash_uploader", "fileNames"),
         State("session-id", "data"),
     ],
 )
-def uploadData(content, filename, session_id):
+def upload_data_reset_components(isCompleted, filename, session_id):
     # the content needs to be split. It contains the type and the real content
-    if content is not None:
+    if isCompleted:
         global redis_client
-        content_type, content_str = content.split(",")
-        # Create Dataset object, remove the extension part (.zip) from the filename
-        dataset_name = filename.split(".")[0]
+        # remove the extension part (.zip) from the filename
+        print("line 563:", filename)
+        print("line 564:", filename[0])
+        dataset_name = os.path.splitext(filename[0])[0]
+        print("line 565: dataset_name:", dataset_name)
         # store dataset name in redis
         if not redis_client.sismember(f"{session_id}:datasets", dataset_name):
+            # arrange and extract files
+            move_unzip_uploaded_file(session_id, filename)
+            # should only add dataset name to our redis Set, IF zip upload/extract succesful
             redis_client.sadd(f"{session_id}:datasets", dataset_name)
-            decode_and_extract_zip(session_id, dataset_name, content_str)
         # Update the current dataset being used by user
         redis_client.set(f"{session_id}:curr_dataset", dataset_name)
-        # read uploaded data and create ZipFile obj
+
         outputText = create_LR_label(
             id="file_info_label",
             leftText="[FILE]:",
@@ -887,5 +922,26 @@ def display_selected_data(selectedData, session_id):
         return no_update, no_update, no_update
 
 
+@app.callback(
+    Output("dummy1", "children"),
+    Input("interval-component", "n_intervals"),
+    State("session-id", "data"),
+)
+def update_activity_timestamp(n, session_id):
+    # store and update redis timestamps for each user
+    global redis_client
+    curr_time = str(datetime.now())
+    print(curr_time, "updating timestamp for user:", session_id)
+    redis_client.set(f"{session_id}:latest_timestamp", curr_time)
+    return no_update
+
+
 if __name__ == "__main__":
+    # start thread for user activity worker here
+    print("Starting thread")
+    x = threading.Thread(
+        target=poll_remove_user_data, args=(redis_client,), daemon=True
+    )
+    x.start()
+    print("Done starting thread")
     server.run(debug=True, host="0.0.0.0", port=5000)
