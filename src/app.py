@@ -43,8 +43,9 @@ from figureGen import blankFig, generate_fig_3D, generate_fig_2D
 
 server = flask.Flask(__name__)
 # Initialize Cache
-# use host="127.0.0.1" if running redis server locally (without Docker)
-redis_client = Redis(host="redis", port=6379, db=0, decode_responses=True)
+# use host="redis" if running redis server with docker #
+# "127.0.0.1" if locally (without Docker)
+redis_client = Redis(host="127.0.0.1", port=6379, db=0, decode_responses=True)
 # [TODO]: before deploying consider memory management i.e when should you clear redis
 redis_client.flushall()
 app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.CYBORG])
@@ -66,23 +67,6 @@ title = html.H4(
 # ------------------------------------------------------------------------------
 #   3D Graph and it's Control Components
 # ------------------------------------------------------------------------------
-# uploadButton = dcc.Upload(
-#     id="upload-image-folder",
-#     children=["Drag/Select zip"],
-#     style={
-#         # 'width': '100%',
-#         "height": "60px",
-#         "lineHeight": "60px",
-#         "borderWidth": "1px",
-#         "borderStyle": "dashed",
-#         "borderRadius": "5px",
-#         "textAlign": "center",
-#         "margin": "10px",
-#     },
-#     accept=".zip",
-#     # Don't allow multiple files to be uploaded
-#     multiple=False,
-# )
 graphWithLoadingAnimation = dcc.Loading(
     children=[
         dcc.Graph(
@@ -279,11 +263,11 @@ upload_image_file_button = dcc.Upload(
     },
     # Don't allow multiple files to be uploaded
     multiple=False,
-    disabled=True,
+    disabled=False,
 )
 download_search_button = gen_download_button(
     id="download_search_button",
-    children=["Download"],
+    children=["Download Results"],
     href="",
 )
 image_search_title = html.Div(
@@ -350,6 +334,21 @@ jump_up_button = dbc.Button(
     color="primary",
 )
 
+preview_and_search_card = dbc.Card(
+    [
+        dbc.CardHeader(
+            dbc.Tabs(
+                [
+                    dbc.Tab(label="Selection Preview", tab_id="tab-1"),
+                    dbc.Tab(label="Reverse Image Search", tab_id="tab-2"),
+                ],
+                id="card-tabs",
+                active_tab="tab-1",
+            )
+        ),
+        dbc.CardBody(html.Div(id="card-content")),
+    ]
+)
 
 ################################################################################
 """ Dash UI Layout: """
@@ -375,6 +374,7 @@ def serve_layout():
             dbc.Row(title),
             dbc.Row(
                 [
+                    # Controls card here
                     dbc.Col(
                         dbc.Card(
                             [
@@ -392,11 +392,11 @@ def serve_layout():
                                                     max_files=1,
                                                     filetypes=["zip"],
                                                     # changes default size breaks it when download starts
-                                                    default_style={
-                                                        "overflow": "hide",
-                                                        "minHeight": "2vh",
-                                                        "lineHeight": "2vh",
-                                                    },
+                                                    # default_style={
+                                                    #     "overflow": "hide",
+                                                    #     "minHeight": "2vh",
+                                                    #     "lineHeight": "2vh",
+                                                    # },
                                                     upload_id=session_id,
                                                 ),
                                                 style={  # wrapper div style
@@ -426,108 +426,71 @@ def serve_layout():
                                 ),
                             ],
                             body=True,
-                            style={"height": "70vh"},
+                            style={"height": "122vh"},
                         ),
                         md=3,
-                        align="start",
+                        align="center",
                     ),
                     dbc.Col(
-                        children=[
+                        [
                             dbc.Row(
                                 children=[
-                                    graphWithLoadingAnimation,
-                                    dcc.Tooltip(
-                                        id="mainGraphTooltip", direction="right"
+                                    dbc.Row(
+                                        children=[
+                                            graphWithLoadingAnimation,
+                                            dcc.Tooltip(
+                                                id="mainGraphTooltip", direction="right"
+                                            ),
+                                            dcc.Download(id="mainGraphDownload"),
+                                        ],
+                                        style={"height": "70vh"},
                                     ),
-                                    dcc.Download(id="mainGraphDownload"),
+                                    horz_line,
+                                    dbc.Row(
+                                        [
+                                            # 2d graph here
+                                            dbc.Col(
+                                                children=[
+                                                    graph2D,
+                                                    dcc.Tooltip(
+                                                        id="graph2DTooltip",
+                                                        direction="right",
+                                                    ),
+                                                    dcc.Download(id="graph2DDownload"),
+                                                    horz_line,
+                                                    # tabbed card here
+                                                    dbc.Row(
+                                                        children=(
+                                                            dbc.Col(
+                                                                children=[
+                                                                    preview_and_search_card
+                                                                ],
+                                                                width="auto",
+                                                                md=12,
+                                                            ),
+                                                        ),
+                                                        justify="center",
+                                                        align="center",
+                                                    ),
+                                                    horz_line,
+                                                    # content will be rendered in this element
+                                                    html.Div(id="page-content"),
+                                                ],
+                                            ),
+                                        ],
+                                        style={"height": "50vh"},
+                                        justify="center",
+                                        align="start",
+                                    ),
                                 ],
-                                style={"height": "70vh"},
+                                align="center",
                             ),
                         ],
                         md=9,
                     ),
                 ],
-                align="center",
-            ),
-            horz_line,
-            dbc.Row(
-                [
-                    dbc.Col(
-                        [
-                            dbc.Card(
-                                [
-                                    dbc.Row(search_preview_main_title),
-                                    dbc.Row(
-                                        [image_search_title],
-                                    ),
-                                    horz_line,
-                                    dbc.Row(
-                                        [
-                                            dbc.Col(
-                                                [preview_test_image],
-                                                style={"max-height": "15vh"},
-                                                md=6,
-                                            ),
-                                            dbc.Col([image_file_info], md=6),
-                                        ]
-                                    ),
-                                    horz_line,
-                                    dbc.Row(
-                                        [
-                                            dbc.Col(search_preview_results_title),
-                                            dbc.Row([search_preview]),
-                                        ],
-                                        justify="center",
-                                        align="center",
-                                    ),
-                                ],
-                                body=True,
-                            ),
-                        ],
-                        md=4,
-                    ),
-                    dbc.Col(
-                        children=[
-                            graph2D,
-                            dcc.Tooltip(id="graph2DTooltip", direction="right"),
-                            dcc.Download(id="graph2DDownload"),
-                            horz_line,
-                            dbc.Row(
-                                children=(
-                                    dbc.Col(
-                                        children=[
-                                            dbc.Card(
-                                                [
-                                                    dbc.Row(
-                                                        [preview_title],
-                                                    ),
-                                                    horz_line,
-                                                    dbc.Row(
-                                                        dbc.Col(imagePreview),
-                                                        justify="center",
-                                                        align="center",
-                                                    ),
-                                                ],
-                                                body=True,
-                                            ),
-                                        ],
-                                        width="auto",
-                                        md=12,
-                                    ),
-                                ),
-                                justify="center",
-                                align="center",
-                            ),
-                            horz_line,
-                            # content will be rendered in this element
-                            html.Div(id="page-content"),
-                        ],
-                        md=8,
-                    ),
-                ],
-                style={"height": "50vh"},
                 justify="center",
-                align="start",
+                align="center",
             ),
         ],
         fluid=True,
@@ -548,7 +511,6 @@ app.layout = serve_layout
         Output("dataProcessedFlag", "data"),
         Output("fileInfo", "children"),
         Output("graph3DButton", "disabled"),
-        Output("upload_image_file_button", "disabled"),
     ],
     [Input("dash_uploader", "isCompleted")],
     [
@@ -561,10 +523,7 @@ def upload_data_reset_components(isCompleted, filename, session_id):
     if isCompleted:
         global redis_client
         # remove the extension part (.zip) from the filename
-        print("line 563:", filename)
-        print("line 564:", filename[0])
         dataset_name = os.path.splitext(filename[0])[0]
-        print("line 565: dataset_name:", dataset_name)
         # store dataset name in redis
         if not redis_client.sismember(f"{session_id}:datasets", dataset_name):
             # arrange and extract files
@@ -579,8 +538,8 @@ def upload_data_reset_components(isCompleted, filename, session_id):
             leftText="[FILE]:",
             rightText=dataset_name,
         )
-        return [True], outputText, False, False
-    return no_update, no_update, no_update, no_update
+        return [True], outputText, False
+    return no_update, no_update, no_update
 
 
 ########################################################################
@@ -597,10 +556,11 @@ def upload_data_reset_components(isCompleted, filename, session_id):
     [
         State("upload_image_file_button", "filename"),
         State("session-id", "data"),
+        State("dataClusteredFlag", "data"),
     ],
 )
-def uploadData(content, filename, session_id):
-    if content is not None:
+def uploadData(content, filename, session_id, dataClusteredFlag):
+    if content is not None and dataClusteredFlag:
         content_type, content_str = content.split(",")
         output_filename = (
             html.P(
@@ -643,7 +603,7 @@ def uploadData(content, filename, session_id):
         result_idxs = find_similar_imgs(session_id, dataset_name, test_image_path)
         # display them
         result_preview = gen_img_preview(
-            redis_client, session_id, dataset_name, result_idxs[0], scale=2.5
+            redis_client, session_id, dataset_name, result_idxs[0], scale=0.99
         )
         prepare_preview_download(
             redis_client,
@@ -791,6 +751,7 @@ def create_graph_2D(
     ],
 )
 def display_hover(hoverData, dataClusteredFlag, session_id):
+    # TODO: return no update if
     if (hoverData is None) or (not dataClusteredFlag):
         return False, no_update, no_update
     global redis_client
@@ -831,7 +792,10 @@ def display_hover2D(hoverData, session_id):
     global redis_client
     dataset_name = redis_client.get(f"{session_id}:curr_dataset")
     hover_img_index = hoverData["points"][0]["pointNumber"]
-    im_uri = gen_img_uri(redis_client, session_id, dataset_name, hover_img_index)
+    try:
+        im_uri = gen_img_uri(redis_client, session_id, dataset_name, hover_img_index)
+    except:
+        return False, no_update, no_update
     # demo only shows the first point, but other points may also be available
     hover_data = hoverData["points"][0]
     bbox = hover_data["bbox"]
@@ -891,17 +855,18 @@ def func(clickData, session_id):
         Output("download_preview_button", "href"),
     ],
     [Input("graph2D", "selectedData")],
-    State("session-id", "data"),
+    [State("session-id", "data"), State("card-tabs", "active_tab")],
     prevent_initial_call=True,
 )
-def display_selected_data(selectedData, session_id):
+def display_selected_data(selectedData, session_id, active_tab):
     """get all the selected point idx from the selectedData dictionary
     then get the img path for each idx, then create previwe with paths"""
-    if selectedData["points"]:
+    if selectedData["points"] and active_tab == "tab-1":
         global redis_client
-        points = selectedData["points"]
-        selected_img_idxs = []
 
+        points = selectedData["points"]
+
+        selected_img_idxs = []
         for i in range(len(points)):
             idx = points[i]["pointNumber"]
             selected_img_idxs.append(idx)
@@ -931,17 +896,71 @@ def update_activity_timestamp(n, session_id):
     # store and update redis timestamps for each user
     global redis_client
     curr_time = str(datetime.now())
-    print(curr_time, "updating timestamp for user:", session_id)
     redis_client.set(f"{session_id}:latest_timestamp", curr_time)
     return no_update
 
 
+@app.callback(
+    Output("card-content", "children"),
+    [Input("card-tabs", "active_tab")],
+    State("session-id", "data"),
+)
+def tab_content(active_tab, session_id):
+    if active_tab == "tab-1":
+        content = [
+            dbc.Row(
+                dbc.Col(imagePreview),
+                justify="center",
+                align="center",
+            ),
+            horz_line,
+            dbc.Row(
+                [preview_title],
+            ),
+        ]
+
+    else:
+        content = [
+            dbc.Row(
+                [
+                    dbc.Col(
+                        [
+                            dbc.Row([upload_image_file_button]),
+                            horz_line,
+                            dbc.Row([download_search_button]),
+                            horz_line,
+                            dbc.Row([image_file_info]),
+                        ],
+                        style={"max-height": "30vh"},
+                        md=2,
+                    ),
+                    dbc.Col(
+                        [
+                            preview_test_image,
+                        ],
+                        style={"max-height": "30vh"},
+                        md=2,
+                    ),
+                    dbc.Col(
+                        [
+                            dbc.Row([search_preview]),
+                        ],
+                        style={"max-height": "30vh"},
+                        md=8,
+                    ),
+                ],
+                justify="center",
+                align="center",
+            ),
+        ]
+
+    return content
+
+
 if __name__ == "__main__":
     # start thread for user activity worker here
-    print("Starting thread")
     x = threading.Thread(
         target=poll_remove_user_data, args=(redis_client,), daemon=True
     )
     x.start()
-    print("Done starting thread")
     server.run(debug=True, host="0.0.0.0", port=5000)

@@ -13,11 +13,9 @@ def poll_remove_user_data(redis_client: Redis):
             user_list = redis_client.lrange("users", 0, -1)
             if user_list:
                 # print("user_list:", user_list)
-                print("Hello World! here are the current redis users' contents.")
                 for user in user_list:
                     user_data = redis_client.keys(f"{user}*")
                     if user_data:
-                        print("for user number:", user)
                         print("user_data:", user_data)
                         # before removing user data check if theyve been gone long enough
                         # retrieve the users stored time stamp and convert from string to datetime object
@@ -29,10 +27,9 @@ def poll_remove_user_data(redis_client: Redis):
                         curr_time = datetime.now()
                         # compare the times
                         time_difference = (curr_time - user_time).total_seconds()
-                        print("user_time", user_time)
-                        print("curr_time", curr_time)
                         print("difference", time_difference, "sec")
-                        if time_difference >= 60:
+                        # 300 seconds = 5 minutes
+                        if time_difference >= 300:
                             print(f"expired, DELETING {user} DATA!")
                             # Remove user data from redis
                             redis_client.delete(*user_data)

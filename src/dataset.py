@@ -314,9 +314,15 @@ def create_clusters_zip(
     clusters_dict = {}
 
     cluster_noise = df[df["cluster"] == -1]["imgPath"].tolist()
-    clusters_dict["cluster_noise"] = cluster_noise
+
     # use set() to iterate over the number of unique classes minus the noise class
-    for i in range(len(set(labels)) - 1):
+    if cluster_noise:
+        num_clusters = range(len(set(labels)) - 1)
+        clusters_dict["cluster_noise"] = cluster_noise
+    else:
+        num_clusters = range(len(set(labels)))
+
+    for i in num_clusters:
         subFrame = df[df["cluster"] == i]
         clusters_dict["cluster_%s" % i] = subFrame["imgPath"].tolist()
 
