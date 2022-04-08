@@ -4,6 +4,7 @@
 # ignore assets folder as it holds large data
 src/assets/
 src/debug_resources/
+playground_notebooks/resources
 
 ### Flask ###
 instance/*

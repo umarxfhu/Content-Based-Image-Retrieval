@@ -8,9 +8,11 @@ from datetime import datetime
 import flask
 import dash
 from redis import Redis
+import plotly.express as px
 from dash import html, dcc, no_update
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
+
 
 # open source dash functionality
 # https://github.com/np-8/dash-uploader
@@ -73,7 +75,7 @@ graphWithLoadingAnimation = dcc.Loading(
             id="mainGraph",
             clear_on_unhover=True,
             figure=blankFig(),
-            loading_state={"is_loading": True},
+            loading_state={"is_loading": False},
             style={"height": "70vh"},
         )
     ],
@@ -107,9 +109,9 @@ n_neighbors_slider = [
         tip_text_right=n_neighbors_left_text,
     ),
     dcc.Slider(
-        min=20,
+        min=10,
         max=240,
-        step=20,
+        step=10,
         value=80,
         id="n_neighbors_slider",
         marks=None,
@@ -139,8 +141,8 @@ min_dist_slider = [
     ),
     dcc.Slider(
         min=0.0,
-        max=0.5,
-        step=0.1,
+        max=1,
+        step=0.01,
         value=0.0,
         id="min_dist_slider",
         marks=None,
@@ -161,10 +163,10 @@ min_cluster_size_slider = [
         tip_text_right=min_cluster_size_left_text,
     ),
     dcc.Slider(
-        min=20,
-        max=400,
-        step=20,
-        value=240,
+        min=5,
+        max=405,
+        step=10,
+        value=155,
         id="min_cluster_size_slider",
         marks=None,
         tooltip={"placement": "bottom"},
@@ -189,7 +191,7 @@ min_samples_slider = [
     ),
     dcc.Slider(
         min=1,
-        max=100,
+        max=200,
         step=1,
         value=10,
         id="min_samples_slider",
@@ -212,6 +214,13 @@ graph3DButton = dbc.Button(
 card3DButtons = html.Div(
     children=[html.Div(download_clusters_button), html.Div(graph3DButton)],
     style={"display": "flex", "justify-content": "space-around"},
+)
+controls_title = html.H5(
+    "Control Parameters:",
+    style={
+        "text-align": "center",
+        "padding": "10px",
+    },
 )
 # ------------------------------------------------------------------------------
 
@@ -244,7 +253,15 @@ download_preview_button = gen_download_button(
     children=["Download"],
     href=app.get_asset_url("preview_2D.zip"),
 )
-preview_title = create_title_with_button(["Selection Preview"], download_preview_button)
+preview_download_name_input = html.Div(
+    [
+        dbc.Input(
+            placeholder="Enter preview download name. Default: 'selection_preview'...",
+            type="text",
+        ),
+    ]
+)
+preview_title = create_title_with_button([download_preview_button], html.Div())
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
@@ -265,32 +282,37 @@ upload_image_file_button = dcc.Upload(
     multiple=False,
     disabled=False,
 )
-download_search_button = gen_download_button(
-    id="download_search_button",
-    children=["Download Results"],
-    href="",
-)
-image_search_title = html.Div(
-    children=[
-        html.Div(
-            [upload_image_file_button],
-            style={
-                "textAlign": "left",
-                "width": "47%",
-                "display": "inline-block",
-                "margin-left": "2%",
-            },
-        ),
-        html.Div(
-            [download_search_button],
-            style={
-                "textAlign": "right",
-                "width": "50%",
-                "display": "inline-block",
-            },
-        ),
+download_search_button = html.Div(
+    [
+        gen_download_button(
+            id="download_search_button",
+            children=["Download Results"],
+            href="",
+        )
     ],
+    style={"display": "flex", "align-items": "center", "justify-content": "center"},
 )
+# image_search_title = html.Div(
+#     children=[
+#         html.Div(
+#             [upload_image_file_button],
+#             style={
+#                 "textAlign": "left",
+#                 "width": "47%",
+#                 "display": "inline-block",
+#                 "margin-left": "2%",
+#             },
+#         ),
+#         html.Div(
+#             [download_search_button],
+#             style={
+#                 "textAlign": "right",
+#                 "width": "50%",
+#                 "display": "inline-block",
+#             },
+#         ),
+#     ],
+# )
 image_file_info = create_info_loading(id="image_file_info", children=[""])
 preview_test_image = html.Div(
     id="preview_test_image",
@@ -303,7 +325,7 @@ preview_test_image = html.Div(
 )
 search_preview = html.Div(
     id="search_preview",
-    children=["Upload image to view similar images."],
+    children=["Upload image to find similar images."],
     style={
         "textAlign": "center",
         #'margin': '10px'
@@ -409,11 +431,17 @@ def serve_layout():
                                             ),
                                         ),
                                         horz_line,
-                                        dbc.Row(n_neighbors_slider),
-                                        dbc.Row(min_dist_slider),
-                                        horz_line,
-                                        dbc.Row(min_cluster_size_slider),
-                                        dbc.Row(min_samples_slider),
+                                        # horz_line,
+                                        dbc.Col(
+                                            [
+                                                controls_title,
+                                                dbc.Row(n_neighbors_slider),
+                                                dbc.Row(min_dist_slider),
+                                                horz_line,
+                                                dbc.Row(min_cluster_size_slider),
+                                                dbc.Row(min_samples_slider),
+                                            ]
+                                        ),
                                         horz_line,
                                         dbc.Row(
                                             [card3DButtons],
@@ -426,7 +454,7 @@ def serve_layout():
                                 ),
                             ],
                             body=True,
-                            style={"height": "122vh"},
+                            style={"height": "124vh"},
                         ),
                         md=3,
                         align="center",
@@ -435,55 +463,50 @@ def serve_layout():
                         [
                             dbc.Row(
                                 children=[
-                                    dbc.Row(
-                                        children=[
-                                            graphWithLoadingAnimation,
-                                            dcc.Tooltip(
-                                                id="mainGraphTooltip", direction="right"
-                                            ),
-                                            dcc.Download(id="mainGraphDownload"),
-                                        ],
-                                        style={"height": "70vh"},
+                                    graphWithLoadingAnimation,
+                                    dcc.Tooltip(
+                                        id="mainGraphTooltip", direction="right"
                                     ),
-                                    horz_line,
-                                    dbc.Row(
-                                        [
-                                            # 2d graph here
-                                            dbc.Col(
-                                                children=[
-                                                    graph2D,
-                                                    dcc.Tooltip(
-                                                        id="graph2DTooltip",
-                                                        direction="right",
-                                                    ),
-                                                    dcc.Download(id="graph2DDownload"),
-                                                    horz_line,
-                                                    # tabbed card here
-                                                    dbc.Row(
-                                                        children=(
-                                                            dbc.Col(
-                                                                children=[
-                                                                    preview_and_search_card
-                                                                ],
-                                                                width="auto",
-                                                                md=12,
-                                                            ),
-                                                        ),
-                                                        justify="center",
-                                                        align="center",
-                                                    ),
-                                                    horz_line,
-                                                    # content will be rendered in this element
-                                                    html.Div(id="page-content"),
-                                                ],
+                                    dcc.Download(id="mainGraphDownload"),
+                                ],
+                                style={"height": "70vh"},
+                            ),
+                            horz_line,
+                            dbc.Row(
+                                [
+                                    # 2d graph here
+                                    dbc.Col(
+                                        children=[
+                                            graph2D,
+                                            dcc.Tooltip(
+                                                id="graph2DTooltip",
+                                                direction="right",
                                             ),
+                                            dcc.Download(id="graph2DDownload"),
+                                            horz_line,
+                                            # tabbed card here
+                                            dbc.Row(
+                                                children=(
+                                                    dbc.Col(
+                                                        children=[
+                                                            preview_and_search_card
+                                                        ],
+                                                        width="auto",
+                                                        md=12,
+                                                    ),
+                                                ),
+                                                justify="center",
+                                                align="center",
+                                            ),
+                                            horz_line,
+                                            # content will be rendered in this element
+                                            html.Div(id="page-content"),
                                         ],
-                                        style={"height": "50vh"},
-                                        justify="center",
-                                        align="start",
                                     ),
                                 ],
-                                align="center",
+                                style={"height": "50vh"},
+                                justify="center",
+                                align="start",
                             ),
                         ],
                         md=9,
@@ -728,7 +751,10 @@ def create_graph_2D(
             min_cluster_size,
             min_samples,
         )
-        fig = generate_fig_2D(embeddings_2D, labels)
+        img_paths = orjson.loads(
+            redis_client.get(f"{session_id}:{dataset_name}:img_paths")
+        )
+        fig = generate_fig_2D(embeddings_2D, labels, img_paths)
 
         return [fig]
     else:
@@ -743,6 +769,7 @@ def create_graph_2D(
         Output("mainGraphTooltip", "show"),
         Output("mainGraphTooltip", "bbox"),
         Output("mainGraphTooltip", "children"),
+        # Output("mainGraphTooltip", "border_color"),
     ],
     [Input("mainGraph", "hoverData")],
     [
@@ -751,24 +778,31 @@ def create_graph_2D(
     ],
 )
 def display_hover(hoverData, dataClusteredFlag, session_id):
-    # TODO: return no update if
     if (hoverData is None) or (not dataClusteredFlag):
         return False, no_update, no_update
     global redis_client
     dataset_name = redis_client.get(f"{session_id}:curr_dataset")
-    # Load image with pillow
-    hover_img_index = hoverData["points"][0]["pointNumber"]
-    im_uri = gen_img_uri(redis_client, session_id, dataset_name, hover_img_index)
-
-    # demo only shows the first point, but other points may also be available
     hover_data = hoverData["points"][0]
+    # Load image with pillow
+    hover_img_index = hover_data["pointNumber"]
+    # demo only shows the first point, but other points may also be available
+    img_path = hover_data["hovertext"]
+    cluster = hover_data["marker.color"]
+    im_uri = gen_img_uri(
+        redis_client, session_id, dataset_name, hover_img_index, img_path
+    )
     bbox = hover_data["bbox"]
+    img_name = img_path.split("/")[-1]
     children = [
         html.Img(
             src=im_uri,
             style={"width": "150px"},
         ),
-        # html.P("Image from base64 string"),
+        # dbc.FormText(f"Name: {img_name}", style={"font-size": "x-small"}),
+        html.P(
+            f"cluster: {cluster}   ,   index: {hover_img_index}",
+            style={"font-size": "small", "color": "black", "textAlign": "center"},
+        ),
     ]
     return True, bbox, children
 
@@ -791,20 +825,28 @@ def display_hover2D(hoverData, session_id):
     # Load image with pillow
     global redis_client
     dataset_name = redis_client.get(f"{session_id}:curr_dataset")
-    hover_img_index = hoverData["points"][0]["pointNumber"]
+    hover_data = hoverData["points"][0]
+    hover_img_index = hover_data["pointNumber"]
+    img_path = hover_data["customdata"]
+    cluster = hover_data["marker.color"]
     try:
-        im_uri = gen_img_uri(redis_client, session_id, dataset_name, hover_img_index)
+        im_uri = gen_img_uri(
+            redis_client, session_id, dataset_name, hover_img_index, img_path
+        )
     except:
         return False, no_update, no_update
     # demo only shows the first point, but other points may also be available
-    hover_data = hoverData["points"][0]
+
     bbox = hover_data["bbox"]
     children = [
         html.Img(
             src=im_uri,
             style={"width": "150px"},
         ),
-        # html.P("Image from base64 string"),
+        html.P(
+            f"cluster: {cluster}   ,   index: {hover_img_index}",
+            style={"font-size": "small", "color": "black", "textAlign": "center"},
+        ),
     ]
     return True, bbox, children
 
@@ -909,13 +951,13 @@ def tab_content(active_tab, session_id):
     if active_tab == "tab-1":
         content = [
             dbc.Row(
-                dbc.Col(imagePreview),
-                justify="center",
-                align="center",
+                [preview_title],
             ),
             horz_line,
             dbc.Row(
-                [preview_title],
+                dbc.Col(imagePreview),
+                justify="center",
+                align="center",
             ),
         ]
 

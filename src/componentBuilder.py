@@ -1,5 +1,3 @@
-import math
-
 from dash import html, dcc
 from numpy import place
 from redis import Redis
@@ -25,8 +23,8 @@ def gen_img_preview(
                 html.Img(
                     src=image_uri,
                     style={
-                        "height": f"{129*scale}px",
-                        "width": f"{129*scale}px",
+                        "height": f"{130*scale}px",
+                        "width": f"{130*scale}px",
                         "float": "left",
                         "position": "relative",
                         "padding-top": 1,
@@ -45,17 +43,7 @@ def gen_img_preview(
     return imagesList
 
 
-def gen_paginated_preview(selected_img_idxs):
-
-    # TODO: change this
-    images_per_page = 18
-
-    pages = math.ceil(len(selected_img_idxs) / images_per_page)
-
-    # continue paginating
-
-
-def gen_download_button(id: str, children: "list[str]", href: str):
+def gen_download_button(id: str, children: "list[str]", href: str, style=None):
     return dbc.Button(
         children=children,
         id=id,
@@ -65,6 +53,7 @@ def gen_download_button(id: str, children: "list[str]", href: str):
         external_link=True,
         color="primary",
         href=href,
+        style=style,
     )
 
 

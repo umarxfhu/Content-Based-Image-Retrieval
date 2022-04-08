@@ -156,6 +156,10 @@ def load_features_paths(session_id: str, dataset_name: str, redis_client: Redis)
         # Cache features and index on file system
         pickle.dump(features, open(path_to_features_pickle, "wb"))
         pickle.dump(index, open(path_to_index_pickle, "wb"))
+        pickle.dump(
+            img_paths,
+            open(os.path.join(resources_dir, f"{dataset_name}_img_paths.pickle"), "wb"),
+        )
         # Cache img_paths on redis as they are needed for rapid access later
         # serialize, returns byte instead of string
         img_paths_json_bytes = orjson.dumps(img_paths)
@@ -350,7 +354,9 @@ def create_clusters_zip(
     make_archive(cluster_dir, cluster_dir + ".zip")
 
 
-def gen_img_uri(redis_client: Redis, session_id, dataset_name, img_index) -> str:
+def gen_img_uri(
+    redis_client: Redis, session_id, dataset_name, img_index, img_path=None
+) -> str:
     """genImgURI Open image file at provided path with PIL and encode to
     img_uri string.
 
@@ -360,11 +366,23 @@ def gen_img_uri(redis_client: Redis, session_id, dataset_name, img_index) -> str
     Returns:
         img_uri (str): str containing image bytes viewable by html.Img
     """
-    img_paths = orjson.loads(redis_client.get(f"{session_id}:{dataset_name}:img_paths"))
-    im = Image.open(img_paths[img_index])
+
+    if img_path:
+        im = Image.open(img_path)
+    else:
+        img_paths = orjson.loads(
+            redis_client.get(f"{session_id}:{dataset_name}:img_paths")
+        )
+        im = Image.open(img_paths[img_index])
+
     # dump it to base64
     buffer = io.BytesIO()
-    im.save(buffer, format="jpeg")
+    try:
+        im.save(buffer, format="jpeg")
+    except:
+        im = im.convert("RGB")
+        im.save(buffer, format="jpeg")
+
     encoded_image = base64.b64encode(buffer.getvalue()).decode()
     im_url = "data:image/jpeg;base64, " + encoded_image
     return im_url
