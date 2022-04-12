@@ -37,7 +37,7 @@ from componentBuilder import (
     create_info_loading,
     create_title_with_button,
 )
-from figureGen import blankFig, generate_fig_3D, generate_fig_2D
+from figureGen import blankFig, generate_fig
 
 ################################################################################
 """ Initialize Dash App, Redis, Uploader: """
@@ -60,11 +60,22 @@ du.configure_upload(app, "assets/temp")
 
 horz_line = html.Hr()
 
+titles_color = "#acdcf2"
+
 # title of the dash
-title = html.H4(
-    "Dataset Clustering Dashboard",
-    style={"color": "white", "text-align": "center", "padding": "10px"},
+title = dbc.Card(
+    [
+        html.H5(
+            "Dataset Clustering Dash",
+            style={
+                "color": titles_color,
+                "text-align": "center",
+                "padding": "15px",
+            },
+        )
+    ]
 )
+
 
 # ------------------------------------------------------------------------------
 #   3D Graph and it's Control Components
@@ -81,8 +92,15 @@ graphWithLoadingAnimation = dcc.Loading(
     ],
     type="graph",
 )
+dash_uploader_style = {  # wrapper div style
+    "textAlign": "center",
+    "width": "100%",
+    # "height": "50px",
+    "padding": "10px",
+    "display": "inline-block",
+}
 fileInfo = create_info_loading(
-    id="fileInfo", children=["Please upload FolderOfImagesYouWishToCluster.zip"]
+    id="fileInfo", children=["Upload FolderOfImagesYouWishToCluster.zip"]
 )
 dataInfo = create_info_loading(
     id="dataInfo", children=["Then click the generate graphs button below."]
@@ -105,6 +123,7 @@ n_neighbors_slider = [
         tip_text_left=(
             "Uniform Manifold Approximation and Projection (UMAP) is a "
             "dimension reduction technique used here to allow visualisation."
+            "This affects the positions of the data points and shapes of the cluster clouds."
         ),
         tip_text_right=n_neighbors_left_text,
     ),
@@ -136,6 +155,7 @@ min_dist_slider = [
         tip_text_left=(
             "Uniform Manifold Approximation and Projection (UMAP) is a "
             "dimension reduction technique used here to allow visualisation."
+            "This affects the positions of the data points and shapes of the cluster clouds."
         ),
         tip_text_right=min_dist_left_text,
     ),
@@ -159,7 +179,10 @@ min_cluster_size_slider = [
         id="min_cluster_size_label",
         leftText="[HDBSCAN]:",
         rightText="min_cluster_size",
-        tip_text_left="Hierarchical Density-Based Spatial Clustering of Applications with Noise.",
+        tip_text_left=(
+            "Hierarchical Density-Based Spatial Clustering of Applications with Noise."
+            "This affects the labels assigned to the data i.e the cluster each point is assigned to."
+        ),
         tip_text_right=min_cluster_size_left_text,
     ),
     dcc.Slider(
@@ -186,7 +209,10 @@ min_samples_slider = [
         id="min_samples_label",
         leftText="[HDBSCAN]:",
         rightText="min_samples",
-        tip_text_left="Hierarchical Density-Based Spatial Clustering of Applications with Noise.",
+        tip_text_left=(
+            "Hierarchical Density-Based Spatial Clustering of Applications with Noise."
+            "This affects the labels assigned to the data i.e the cluster each point is assigned to."
+        ),
         tip_text_right=min_samples_left_text,
     ),
     dcc.Slider(
@@ -215,11 +241,13 @@ card3DButtons = html.Div(
     children=[html.Div(download_clusters_button), html.Div(graph3DButton)],
     style={"display": "flex", "justify-content": "space-around"},
 )
-controls_title = html.H5(
-    "Control Parameters:",
+controls_title = html.Div(
+    [html.Span(["Control Parameters:"])],
     style={
         "text-align": "center",
-        "padding": "10px",
+        "padding": "15px",
+        "color": titles_color,
+        "font-size": "20px",
     },
 )
 # ------------------------------------------------------------------------------
@@ -393,7 +421,7 @@ def serve_layout():
             dcc.Store(id="session-id", data=session_id),
             dcc.Store(id="dataProcessedFlag", data=False),
             dcc.Store(id="dataClusteredFlag", data=False),
-            dbc.Row(title),
+            horz_line,
             dbc.Row(
                 [
                     # Controls card here
@@ -402,35 +430,36 @@ def serve_layout():
                             [
                                 dbc.Row(
                                     children=[
+                                        dbc.Row(title),
+                                        # dbc.Row(horz_line),
                                         dbc.Row(fileInfo),
                                         dbc.Row(dataInfo),
                                         dbc.Row(
-                                            # This component is verbosely placed in layout as it
-                                            # requires session_id to be dynamically generated
-                                            html.Div(
-                                                du.Upload(
-                                                    id="dash_uploader",
-                                                    text="Drag/Select Zip",
-                                                    max_files=1,
-                                                    filetypes=["zip"],
-                                                    # changes default size breaks it when download starts
-                                                    # default_style={
-                                                    #     "overflow": "hide",
-                                                    #     "minHeight": "2vh",
-                                                    #     "lineHeight": "2vh",
-                                                    # },
-                                                    upload_id=session_id,
+                                            [
+                                                # This component is verbosely placed in layout as it
+                                                # requires session_id to be dynamically generated
+                                                dbc.Col(
+                                                    [
+                                                        html.Div(
+                                                            du.Upload(
+                                                                id="dash_uploader",
+                                                                text="Drag/Select Zip",
+                                                                max_files=1,
+                                                                filetypes=["zip"],
+                                                                # changes default size breaks it when download starts
+                                                                # default_style={
+                                                                #     "overflow": "hide",
+                                                                #     "minHeight": "2vh",
+                                                                #     "lineHeight": "2vh",
+                                                                # },
+                                                                upload_id=session_id,
+                                                            ),
+                                                            style=dash_uploader_style,
+                                                        ),
+                                                    ]
                                                 ),
-                                                style={  # wrapper div style
-                                                    "textAlign": "center",
-                                                    "width": "100%",
-                                                    # "height": "50px",
-                                                    "padding": "10px",
-                                                    "display": "inline-block",
-                                                },
-                                            ),
+                                            ]
                                         ),
-                                        horz_line,
                                         # horz_line,
                                         dbc.Col(
                                             [
@@ -546,6 +575,7 @@ def upload_data_reset_components(isCompleted, filename, session_id):
     if isCompleted:
         global redis_client
         # remove the extension part (.zip) from the filename
+        print("filename", filename)
         dataset_name = os.path.splitext(filename[0])[0]
         # store dataset name in redis
         if not redis_client.sismember(f"{session_id}:datasets", dataset_name):
@@ -652,7 +682,7 @@ def uploadData(content, filename, session_id, dataClusteredFlag):
         Output("download_clusters_button", "disabled"),
         Output("download_clusters_button", "href"),
     ],
-    [Input("graph3DButton", "n_clicks")],
+    [Input("graph3DButton", "n_clicks"), Input("dash_uploader", "isCompleted")],
     [
         State("dataProcessedFlag", "data"),
         State("n_neighbors_slider", "value"),
@@ -664,6 +694,7 @@ def uploadData(content, filename, session_id, dataClusteredFlag):
 )
 def update_output(
     n_clicks,
+    isCompleted,
     dataProcessedFlag,
     n_neighbors,
     min_dist,
@@ -672,11 +703,23 @@ def update_output(
     session_id,
 ):
     # After feature extraction, enable 3D graph gen button
+    ctx = dash.callback_context
+    # check if this callback was fired after a dataset upload,
+    # if yes set datainfo back to button click instruction.
+    if (
+        ctx.triggered[0]["prop_id"] == "dash_uploader.isCompleted"
+        and ctx.triggered[0]["value"]
+    ):
+        data_info_text = create_info_loading(
+            id="dataInfo", children=["Click the generate graphs button below."]
+        )
+        return no_update, no_update, data_info_text, no_update, no_update
+
     if dataProcessedFlag:
         global redis_client
-        # Generate the 3D graph and update global variable
+        # Generate the 3D graph using most recently uploaded dataset
         dataset_name = redis_client.get(f"{session_id}:curr_dataset")
-        figure, percent_clustered = generate_fig_3D(
+        figure, percent_clustered = generate_fig(
             redis_client,
             session_id,
             dataset_name,
@@ -684,6 +727,7 @@ def update_output(
             min_dist,
             min_cluster_size,
             min_samples,
+            n_components=3,
         )
         # Output Clustering statistics
         output_text = create_LR_label(
@@ -700,6 +744,7 @@ def update_output(
             min_dist,
             min_cluster_size,
             min_samples,
+            n_components=3,
         )
         dataset_dir = f"assets/{session_id}/{dataset_name}"
         cluster_zip_path = os.path.join(dataset_dir, "clusters.zip")
@@ -735,26 +780,16 @@ def create_graph_2D(
         global redis_client
         # Calculate UMAP embeddings with two components.
         dataset_name = redis_client.get(f"{session_id}:curr_dataset")
-        embeddings_2D = setup_umap(
+        fig, percent_clustered = generate_fig(
             redis_client,
-            session_id,
-            dataset_name,
-            n_neighbors,
-            min_dist,
-            n_components=2,
-        )
-        labels = get_labels(
             session_id,
             dataset_name,
             n_neighbors,
             min_dist,
             min_cluster_size,
             min_samples,
+            n_components=2,
         )
-        img_paths = orjson.loads(
-            redis_client.get(f"{session_id}:{dataset_name}:img_paths")
-        )
-        fig = generate_fig_2D(embeddings_2D, labels, img_paths)
 
         return [fig]
     else:
@@ -769,7 +804,7 @@ def create_graph_2D(
         Output("mainGraphTooltip", "show"),
         Output("mainGraphTooltip", "bbox"),
         Output("mainGraphTooltip", "children"),
-        # Output("mainGraphTooltip", "border_color"),
+        # Output("mainGraphTooltip", "style"),
     ],
     [Input("mainGraph", "hoverData")],
     [
@@ -794,15 +829,25 @@ def display_hover(hoverData, dataClusteredFlag, session_id):
     bbox = hover_data["bbox"]
     img_name = img_path.split("/")[-1]
     children = [
-        html.Img(
-            src=im_uri,
-            style={"width": "150px"},
-        ),
-        # dbc.FormText(f"Name: {img_name}", style={"font-size": "x-small"}),
-        html.P(
-            f"cluster: {cluster}   ,   index: {hover_img_index}",
-            style={"font-size": "small", "color": "black", "textAlign": "center"},
-        ),
+        html.Div(
+            [
+                html.Img(
+                    src=im_uri,
+                    style={"width": "150px"},
+                ),
+                # dbc.FormText(f"Name: {img_name}", style={"font-size": "x-small"}),
+                html.Span(
+                    f"cluster: {cluster}   ___   index: {hover_img_index}",
+                    style={
+                        "display": "block",
+                        "font-size": "small",
+                        "color": "black",
+                        "textAlign": "center",
+                    },
+                ),
+            ],
+            style={"white-space": "normal", "display": "block", "margin": "0 auto"},
+        )
     ]
     return True, bbox, children
 
@@ -920,7 +965,9 @@ def display_selected_data(selectedData, session_id, active_tab):
         dataset_dir = f"assets/{session_id}/{dataset_name}"
         preview_zip_path = os.path.join(dataset_dir, "preview_2D.zip")
         return (
-            gen_img_preview(redis_client, session_id, dataset_name, selected_img_idxs),
+            gen_img_preview(
+                redis_client, session_id, dataset_name, selected_img_idxs, scale=0.915
+            ),
             False,
             preview_zip_path,
         )

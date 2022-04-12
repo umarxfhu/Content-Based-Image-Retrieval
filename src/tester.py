@@ -5,6 +5,8 @@ import shutil
 from zipfile import ZipFile
 
 import time
+import sys
+from tqdm import tqdm
 from redis import Redis
 
 import threading
@@ -15,6 +17,8 @@ import dash_bootstrap_components as dbc
 from dash import Dash, dcc, html, no_update
 from dash.dependencies import Input, Output, State
 
+from dash.long_callback import DiskcacheLongCallbackManager
+import diskcache
 import dash_uploader as du
 
 # external_stylesheets = ["https://codepen.io/chriddyp/pen/bWLwgP.css"]
@@ -22,7 +26,14 @@ import dash_uploader as du
 # app = Dash(__name__, external_stylesheets=external_stylesheets)
 
 server = flask.Flask(__name__)
-app = Dash(__name__, server=server, external_stylesheets=[dbc.themes.CYBORG])
+cache = diskcache.Cache("./callback_cache")
+lcm = DiskcacheLongCallbackManager(cache)
+app = Dash(
+    __name__,
+    server=server,
+    long_callback_manager=lcm,
+    external_stylesheets=[dbc.themes.CYBORG],
+)
 
 
 redis_client = Redis(host="127.0.0.1", port=6379, db=0, decode_responses=True)
@@ -31,6 +42,10 @@ redis_client.flushall()
 temp_upload_directory = "assets/temp"
 # optional argument during configuration: , use_upload_id=False
 du.configure_upload(app, temp_upload_directory)
+
+if os.path.exists("progress.txt"):
+    os.remove("progress.txt")
+
 
 """warningSecurity note: The Upload component allows POST requests and uploads
 of arbitrary files to the server harddisk and one should take this into account
@@ -70,6 +85,11 @@ card = dbc.Card(
 )
 
 
+pbar = dbc.Progress(id="pbar", style={"margin-top": 15})
+
+timer_progress = dcc.Interval(id="timer_progress", interval=1000)
+
+
 def serve_layout():
     session_id = str(uuid.uuid4())
     return html.Div(
@@ -84,9 +104,12 @@ def serve_layout():
             html.Div(id="dummy1"),
             dcc.Store(id="session-id", data=session_id),
             html.Div([card]),
-            html.Div([f"Hi! I am user#: {session_id}"]),
+            html.Div([f"Hi! I am user#: {session_id}"], id="greeting"),
+            html.Div([pbar]),
+            html.Div([timer_progress]),
             html.Div(id="output-image-upload"),
             html.Div(children=[upload_image_file_button]),
+            html.Div(["derp"], id="derp"),
         ]
     )
 
@@ -130,18 +153,47 @@ def tab_content(active_tab, session_id):
 
 
 @app.callback(
-    [
-        Output("output-image-upload", "children"),
-    ],
-    [Input("dash_uploader", "isCompleted")],
-    [
+    Output("pbar", "value"),
+    Output("pbar", "label"),
+    Input("timer_progress", "n_intervals"),
+    prevent_initial_call=True,
+)
+def callback_progress(n_intervals: int):
+
+    try:
+        with open("progress.txt", "r") as file:
+            str_raw = file.read()
+        last_line = list(filter(None, str_raw.split("\n")))[-1]
+        percent = float(last_line.split("%")[0])
+
+    except:
+        percent = 0
+
+    finally:
+        text = f"{percent:.0f}%"
+        return percent, text
+
+
+@app.long_callback(
+    output=(Output("output-image-upload", "children"), Output("derp", "children")),
+    inputs=(
+        Input("dash_uploader", "isCompleted"),
         State("dash_uploader", "fileNames"),
         State("session-id", "data"),
+    ),
+    running=[
+        (
+            Output("greeting", "children"),
+            "long callback still running!",
+            "oh...we done the long fxn",
+        ),
     ],
+    prevent_initial_call=True,
 )
 def update_output(isCompleted, fileNames, session_id):
     def move_unzip_uploaded_file(session_id):
-        print("i here")
+        if os.path.exists("progress.txt"):
+            os.remove("progress.txt")
         user_temp_path = os.path.join(temp_upload_directory, session_id, fileNames[0])
         user_unzip_path = os.path.join(f"assets/{session_id}/unzipped")
         if not os.path.exists(user_unzip_path):
@@ -151,14 +203,45 @@ def update_output(isCompleted, fileNames, session_id):
         print("file_path:", file_path)
         with ZipFile(file_path, "r") as zipObj:
             zipObj.extractall(user_unzip_path)
+        # start writing to tqdm progress file
+        std_err_backup = sys.stderr
+        file_prog = open("progress.txt", "w")
+        sys.stderr = file_prog
+        # time-consuming fxn
+        for i in tqdm(range(0, 20)):
+            time.sleep(1)
+        # close progress file
+        file_prog.close()
+        sys.stderr = std_err_backup
+        print("pause..")
+        time.sleep(2)
+        # start writing to tqdm progress file
+        std_err_backup = sys.stderr
+        file_prog = open("progress.txt", "w")
+        sys.stderr = file_prog
+        # time-consuming fxn
+        for i in tqdm(range(0, 20)):
+            time.sleep(1)
+        # close progress file
+        file_prog.close()
+        sys.stderr = std_err_backup
+
         os.remove(file_path)
         shutil.rmtree(os.path.join(temp_upload_directory, session_id))
 
     if isCompleted:
         move_unzip_uploaded_file(session_id)
-        return [f"file donezo: {fileNames[0]}"]
+        return [f"file donezo: {fileNames[0]}"], ["interesting..."]
     else:
-        return no_update
+        return no_update, no_update
+
+
+# def callback_hidden(btn_name: str, number: float) -> str:
+
+#     x = time_consuming_function(number)
+#     result_str = f"Long callback triggered by {btn_name}. Result: {x:.2f}"
+
+#     return result_str
 
 
 # @du.callback(

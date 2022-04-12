@@ -162,13 +162,11 @@ def create_info_loading(id: str, children: list):
         id=id,
         children=[
             html.Div(
-                html.H6(
-                    children=children,
-                    style={
-                        "textAlign": "center",
-                        "padding": "10px",
-                    },
-                )
+                html.Span(children=children, style={"font-size": "15px"}),
+                style={
+                    "textAlign": "center",
+                    "padding": "10px",
+                },
             )
         ],
     )

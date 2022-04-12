@@ -5,6 +5,7 @@
 src/assets/
 src/debug_resources/
 playground_notebooks/resources
+callback_cache/
 
 ### Flask ###
 instance/*

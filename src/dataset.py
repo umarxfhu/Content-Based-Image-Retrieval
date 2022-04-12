@@ -62,17 +62,12 @@ def arrange_unzip_dir(unzip_dir, dataset_name):
 
 
 def move_unzip_uploaded_file(session_id, file_name):
-    print("i here")
     dataset_name = os.path.splitext(file_name[0])[0]
-    print("dataset_name", dataset_name)
+    # print("dataset_name", dataset_name)
     user_dataset_dir = f"assets/{session_id}/{dataset_name}"
-    print("user_dataset_dir", user_dataset_dir)
     temp_upload_dir = f"assets/temp/{session_id}"
-    print("temp_upload_dir", temp_upload_dir)
     temp_zip_path = os.path.join(temp_upload_dir, file_name[0])
-    print("temp_zip_path", temp_zip_path)
     user_unzip_path = os.path.join(user_dataset_dir, "unzipped")
-    print("user_unzip_path", user_unzip_path)
 
     if not os.path.exists(user_unzip_path):
         os.makedirs(user_unzip_path)
@@ -169,10 +164,10 @@ def load_features_paths(session_id: str, dataset_name: str, redis_client: Redis)
 
 
 def setup_umap(
-    redis_client, session_id, dataset_name, n_neighbors, min_dist, n_components=3
+    redis_client, session_id, dataset_name, n_neighbors, min_dist, n_components
 ):
     """- n_neighbors: UMAP Parameter
-    - n_components: Number of dimensions to reduce to, default is 3."""
+    - n_components: Number of dimensions to reduce to."""
 
     # create names for the uploaded files' potential resources
     if isinstance(min_dist, int):
@@ -223,6 +218,7 @@ def generate_clusters(
     min_dist,
     min_cluster_size,
     min_samples,
+    n_components,
 ):
     """Clusters the input feature vectors and returns embeddings + labels.
     - [INPUTS]:
@@ -237,7 +233,7 @@ def generate_clusters(
         - [UMAP]: To reduce feature dimensionality to create embeddings.
         - [HDBSCAN]: To cluster feature embeddings."""
     embeddings, n_components, min_dist_str = setup_umap(
-        redis_client, session_id, dataset_name, n_neighbors, min_dist
+        redis_client, session_id, dataset_name, n_neighbors, min_dist, n_components
     )
     print(f"[INFO][STARTED]: Clustering with HDBSCAN.")
     labels = hdbscan.HDBSCAN(
@@ -274,11 +270,17 @@ def make_archive(source, destination):
 
 
 def get_labels(
-    session_id, dataset_name, n_neighbors, min_dist, min_cluster_size, min_samples
+    session_id,
+    dataset_name,
+    n_neighbors,
+    min_dist,
+    min_cluster_size,
+    min_samples,
+    n_components,
 ):
     resources_dir = get_resource_dir(debug, session_id, dataset_name)
     # create paths to these resource files
-    labels_pickle = f"{dataset_name}_labels_3D_{n_neighbors}_{min_dist}_{min_cluster_size}_{min_samples}.pickle"
+    labels_pickle = f"{dataset_name}_labels_{n_components}D_{n_neighbors}_{min_dist}_{min_cluster_size}_{min_samples}.pickle"
     path_to_labels_pickle = os.path.join(resources_dir, labels_pickle)
     resources = os.listdir(resources_dir)
     if labels_pickle in resources:
@@ -298,11 +300,18 @@ def create_clusters_zip(
     min_dist,
     min_cluster_size,
     min_samples,
+    n_components,
 ):
     img_paths = orjson.loads(redis_client.get(f"{session_id}:{dataset_name}:img_paths"))
 
     labels = get_labels(
-        session_id, dataset_name, n_neighbors, min_dist, min_cluster_size, min_samples
+        session_id,
+        dataset_name,
+        n_neighbors,
+        min_dist,
+        min_cluster_size,
+        min_samples,
+        n_components,
     )
 
     # Export clusters to folders
