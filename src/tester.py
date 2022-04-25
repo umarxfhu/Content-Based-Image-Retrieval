@@ -17,8 +17,8 @@ import dash_bootstrap_components as dbc
 from dash import Dash, dcc, html, no_update
 from dash.dependencies import Input, Output, State
 
-from dash.long_callback import DiskcacheLongCallbackManager
 import diskcache
+from dash.long_callback import DiskcacheLongCallbackManager
 import dash_uploader as du
 
 # external_stylesheets = ["https://codepen.io/chriddyp/pen/bWLwgP.css"]

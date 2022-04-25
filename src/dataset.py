@@ -10,6 +10,7 @@ except:
 import os
 import io
 import gc
+import sys
 import faiss
 import torch
 import pickle
@@ -145,7 +146,7 @@ def load_features_paths(session_id: str, dataset_name: str, redis_client: Redis)
     else:
         # Extract using model and save features+img_paths
         unzip_dir = f"assets/{session_id}/{dataset_name}/unzipped"
-        features, img_paths = extract_features_paths(unzip_dir)
+        features, img_paths = extract_features_paths(unzip_dir, session_id)
         index = faiss.IndexFlatL2(2048)
         index.add(features)
         # Cache features and index on file system
@@ -194,7 +195,11 @@ def setup_umap(
         print(
             f"[INFO][STARTED]: Dimensionality reduction... this could take a few minutes."
         )
-        # print("features before umapping:", features)
+        # save current system exceptions file that tqdm writes to
+        std_err_backup = sys.stderr
+        file_prog = open(f"assets/{session_id}/progress.txt", "w")
+        sys.stderr = file_prog
+        # start writing to tqdm progress file
         embeddings = UMAP(
             n_neighbors=n_neighbors,
             min_dist=min_dist,
@@ -203,7 +208,11 @@ def setup_umap(
             random_state=24,
             transform_seed=24,
             verbose=True,
+            tqdm_kwds={"bar_format": "{l_bar}{bar:3}{r_bar}{bar:-3b}"},
         ).fit_transform(features)
+        # close progress file
+        file_prog.close()
+        sys.stderr = std_err_backup
         pickle.dump(embeddings, open(path_to_embeddings_pickle, "wb"))
         print(f"[INFO][DONE]: Dimensionality reduction.")
 
@@ -471,3 +480,31 @@ def find_similar_imgs(session_id, dataset_name, test_image_path: str) -> list:
         distance, indices = index.search(query_descriptors.reshape(1, 2048), 12)
 
     return indices
+
+
+def parse_tqdm_progress(session_id):
+    # try:
+    #     with open(f"assets/{session_id}/progress.txt", "r") as file:
+    #         str_raw = file.read()
+    #     last_line = list(filter(None, str_raw.split("\n")))[-1]
+    #     print("last_line", last_line)
+    #     percent = float(last_line.split("%")[0])
+
+    # except:
+    #     percent = 0
+
+    # finally:
+    #     text = f"{percent:.0f}%"
+    #     return percent, text
+    try:
+        with open(f"assets/{session_id}/progress.txt", "r") as file:
+            str_raw = file.read()
+        last_line = list(filter(None, str_raw.split("\n")))[-1]
+        text_split = last_line.split(": ")
+        if text_split[0] == "Epochs completed":
+            return_text = "UMAP: " + text_split[1]
+        else:
+            return_text = "ResNet: " + last_line
+        return return_text
+    except:
+        return "Processing..."
