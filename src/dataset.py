@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from redis import Redis
-
+from tqdm import tqdm
 from zipfile import ZipFile
 
 from torchvision import transforms, models
@@ -56,30 +56,47 @@ def arrange_unzip_dir(unzip_dir, dataset_name):
             print("[INFO]: Uploaded zip file stored as individual files.")
             # joining into the path of this folder that we want to remove
             destination_dir = os.path.join(unzip_dir, dataset_name)
-            os.makedirs(destination_dir)
+            if not os.path.exists(destination_dir):
+                os.makedirs(destination_dir)
             for file_name in os.listdir(unzip_dir):
                 shutil.move(os.path.join(unzip_dir, file_name), destination_dir)
 
 
 def move_unzip_uploaded_file(session_id, file_name):
     dataset_name = os.path.splitext(file_name[0])[0]
-    # print("dataset_name", dataset_name)
     user_dataset_dir = f"assets/{session_id}/{dataset_name}"
     temp_upload_dir = f"assets/temp/{session_id}"
     temp_zip_path = os.path.join(temp_upload_dir, file_name[0])
     user_unzip_path = os.path.join(user_dataset_dir, "unzipped")
 
+    # print block
+    print("[INFO]: dataset_name:", dataset_name)
+    print("[INFO]: user_dataset_dir:", user_dataset_dir)
+    print("[INFO]: temp_upload_dir:", temp_upload_dir)
+    print("[INFO]: temp_zip_path:", temp_zip_path)
+    print("[INFO]: user_unzip_path:", user_unzip_path)
+
     if not os.path.exists(user_unzip_path):
         os.makedirs(user_unzip_path)
     shutil.move(temp_zip_path, user_unzip_path)
+    print(f"[INFO]: moved {temp_zip_path} to {user_unzip_path}")
     file_path = os.path.join(user_unzip_path, f"{file_name[0]}")
     print("file_path:", file_path)
     with ZipFile(file_path, "r") as zipObj:
         zipObj.extractall(user_unzip_path)
+    print(f"[INFO]: extracted {file_path} to {user_unzip_path}")
+    unzip_dir = os.path.join(user_unzip_path, dataset_name)
     # remove the zip file
     os.remove(file_path)
     # clean dir structure if needed
+    print("[INFO]: Arranging", user_unzip_path, "and", dataset_name)
     arrange_unzip_dir(user_unzip_path, dataset_name)
+    # remove the mac zip dir if necessary
+    mac_zip_dir = os.path.join(user_unzip_path, dataset_name, "__MACOSX")
+    print("mac_zip_dir:", mac_zip_dir)
+    if os.path.exists(mac_zip_dir):
+        print("removing the ")
+        shutil.rmtree(mac_zip_dir)
     # remove the temp dir
     shutil.rmtree(temp_upload_dir)
 
@@ -243,7 +260,7 @@ def generate_clusters(
     print(f"[INFO][DONE]: Clustering with HDBSCAN.")
     # calculate percentage of the images that were clustered (i.e not labelled as noise)
     num_clustered = labels >= 0
-    img_paths = orjson.loads(redis_client.get(f"{session_id}:{dataset_name}:img_paths"))
+    img_paths = get_img_paths(redis_client, session_id, dataset_name)
     percent_clustered = round(100 * np.sum(num_clustered) / len(img_paths), 2)
 
     resources_dir = get_resource_dir(debug, session_id, dataset_name)
@@ -253,6 +270,26 @@ def generate_clusters(
     pickle.dump(labels, open(path_to_labels_pickle, "wb"))
 
     return embeddings, labels, percent_clustered
+
+
+def get_img_paths(redis_client: Redis, session_id, dataset_name):
+    try:
+        img_paths = orjson.loads(
+            redis_client.get(f"{session_id}:{dataset_name}:img_paths")
+        )
+    except:
+        # if using injected resources for debug, load from file and save into redis
+        resources_dir = get_resource_dir(debug, session_id, dataset_name)
+        with open(
+            os.path.join(resources_dir, f"{dataset_name}_img_paths.pickle"), "rb"
+        ) as f:
+            img_paths = pickle.load(f)
+        # replace the user_id from saved paths to that of current user
+        old_id = img_paths[0].split("/")[1]
+        img_paths = [path.replace(old_id, session_id) for path in img_paths]
+        img_paths_json_bytes = orjson.dumps(img_paths)
+        redis_client.set(f"{session_id}:{dataset_name}:img_paths", img_paths_json_bytes)
+    return img_paths
 
 
 def make_archive(source, destination):
@@ -302,7 +339,7 @@ def create_clusters_zip(
     min_samples,
     n_components,
 ):
-    img_paths = orjson.loads(redis_client.get(f"{session_id}:{dataset_name}:img_paths"))
+    img_paths = get_img_paths(redis_client, session_id, dataset_name)
 
     labels = get_labels(
         session_id,
@@ -379,9 +416,7 @@ def gen_img_uri(
     if img_path:
         im = Image.open(img_path)
     else:
-        img_paths = orjson.loads(
-            redis_client.get(f"{session_id}:{dataset_name}:img_paths")
-        )
+        img_paths = get_img_paths(redis_client, session_id, dataset_name)
         im = Image.open(img_paths[img_index])
 
     # dump it to base64
@@ -411,7 +446,7 @@ def prepare_preview_download(
     if os.path.exists(preview_zip_path):
         os.remove(preview_zip_path)
     # create directory with the preview images copied from original dataset
-    img_paths = orjson.loads(redis_client.get(f"{session_id}:{dataset_name}:img_paths"))
+    img_paths = get_img_paths(redis_client, session_id, dataset_name)
     for idx in selected_img_idxs:
         img_path = img_paths[idx]
         shutil.copy(img_path, preview_files_dir)

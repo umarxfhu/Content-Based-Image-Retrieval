@@ -1,7 +1,7 @@
 import plotly.express as px
 import plotly.graph_objects as go
 
-from dataset import generate_clusters
+from dataset import generate_clusters, get_img_paths
 
 import orjson
 
@@ -40,9 +40,7 @@ def generate_fig(
             min_samples,
             n_components=3,
         )
-        img_paths = orjson.loads(
-            redis_client.get(f"{session_id}:{dataset_name}:img_paths")
-        )
+        img_paths = get_img_paths(redis_client, session_id, dataset_name)
         scatterPlot = px.scatter_3d(
             embeddings,
             x=0,
@@ -74,9 +72,7 @@ def generate_fig(
             min_samples,
             n_components=2,
         )
-        img_paths = orjson.loads(
-            redis_client.get(f"{session_id}:{dataset_name}:img_paths")
-        )
+        img_paths = get_img_paths(redis_client, session_id, dataset_name)
         # scatterPlot = go.Figure(
         #     data=go.Scattergl(
         #         x=embeddings[:, 0],

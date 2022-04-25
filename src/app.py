@@ -580,6 +580,7 @@ def upload_data_reset_components(isCompleted, filename, session_id):
         # store dataset name in redis
         if not redis_client.sismember(f"{session_id}:datasets", dataset_name):
             # arrange and extract files
+            print("[INFO]: filename:", filename)
             move_unzip_uploaded_file(session_id, filename)
             # should only add dataset name to our redis Set, IF zip upload/extract succesful
             redis_client.sadd(f"{session_id}:datasets", dataset_name)
@@ -1052,4 +1053,4 @@ if __name__ == "__main__":
         target=poll_remove_user_data, args=(redis_client,), daemon=True
     )
     x.start()
-    server.run(debug=True, host="0.0.0.0", port=5000)
+    server.run(debug=True, host="0.0.0.0", port=5050)
