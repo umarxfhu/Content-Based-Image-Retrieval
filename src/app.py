@@ -18,6 +18,10 @@ from dash.dependencies import Input, Output, State
 # https://github.com/np-8/dash-uploader
 import dash_uploader as du
 
+# Long callback imports
+import diskcache
+from dash.long_callback import DiskcacheLongCallbackManager
+
 # Local Modules
 from worker import poll_remove_user_data
 from dataset import (
@@ -29,6 +33,7 @@ from dataset import (
     prepare_preview_download,
     del_folder_contents,
     find_similar_imgs,
+    parse_tqdm_progress,
 )
 from componentBuilder import (
     create_LR_label,
@@ -50,7 +55,17 @@ server = flask.Flask(__name__)
 redis_client = Redis(host="127.0.0.1", port=6379, db=0, decode_responses=True)
 # [TODO]: before deploying consider memory management i.e when should you clear redis
 redis_client.flushall()
-app = dash.Dash(__name__, server=server, external_stylesheets=[dbc.themes.CYBORG])
+
+# setup long callback diskcache
+lcm = DiskcacheLongCallbackManager(diskcache.Cache("./callback_cache"))
+
+# Define dash app
+app = dash.Dash(
+    __name__,
+    server=server,
+    long_callback_manager=lcm,
+    external_stylesheets=[dbc.themes.CYBORG],
+)
 
 du.configure_upload(app, "assets/temp")
 
@@ -102,8 +117,21 @@ dash_uploader_style = {  # wrapper div style
 fileInfo = create_info_loading(
     id="fileInfo", children=["Upload FolderOfImagesYouWishToCluster.zip"]
 )
-dataInfo = create_info_loading(
-    id="dataInfo", children=["Then click the generate graphs button below."]
+# dataInfo = create_info_loading(
+#     id="dataInfo", children=["Then click the generate graphs button below."]
+# )
+data_info_text = html.Span(
+    id="dataInfo",
+    children=["Then click the generate graphs button below."],
+    style={"font-size": "15px"},
+)
+dataInfo = html.Div(
+    id="data_info_div",
+    children=[data_info_text],
+    style={
+        "textAlign": "center",
+        "padding": "10px",
+    },
 )
 n_neighbors_left_text = (
     "This parameter controls how UMAP balances local versus global structure in the data. "
@@ -227,7 +255,7 @@ min_samples_slider = [
 ]
 download_clusters_button = gen_download_button(
     id="download_clusters_button",
-    children=["Download Clusters"],
+    children=["Download 3D Clusters"],
     href=app.get_asset_url("clusters.zip"),
 )
 graph3DButton = dbc.Button(
@@ -266,16 +294,22 @@ graph2D = dcc.Loading(
     ],
     type="graph",
 )
-imagePreview = html.Div(
-    id="imagePreview",
+imagePreview = dcc.Loading(
     children=[
-        "Use the box or lasso selector on the 2D graph to preview selected images."
+        html.Div(
+            id="imagePreview",
+            children=[
+                "Use the box or lasso selector on the 2D graph to preview selected images."
+            ],
+            style={
+                "textAlign": "center",
+                #'margin': '10px'
+            },
+        )
     ],
-    style={
-        "textAlign": "center",
-        #'margin': '10px'
-    },
+    type="cube",
 )
+
 download_preview_button = gen_download_button(
     id="download_preview_button",
     children=["Download"],
@@ -400,6 +434,21 @@ preview_and_search_card = dbc.Card(
     ]
 )
 
+# Progress bar components
+progress_text = html.Div(
+    id="progress_text",
+    children=[html.Span("Beginning...")],
+    style={"font-size": "small"},
+)
+progress_interval = dcc.Interval(id="timer_progress", interval=1000, disabled=True)
+
+# User timestamp updater
+activity_interval = dcc.Interval(
+    id="interval-component",
+    interval=1 * 20000,  # 20000 milliseconds = 20 sec
+    n_intervals=0,
+)
+
 ################################################################################
 """ Dash UI Layout: """
 ################################################################################
@@ -409,17 +458,15 @@ def serve_layout():
     redis_client.rpush("users", session_id)
     return dbc.Container(
         [
-            # User timestamp updater
-            dcc.Interval(
-                id="interval-component",
-                interval=1 * 20000,  # 20000 milliseconds = 20 sec
-                n_intervals=0,
-            ),
+            activity_interval,
+            progress_interval,
             # Empty div used since callbacks with no output are not allowed
             html.Div(id="dummy1"),
+            # Using dummy div to keep info % clustered output (dash doesnt allow two callbacks with same output)
+            html.Div(id="dummy_percent_clustered_data", style={"display": "none"}),
             # In browser storage objects
             dcc.Store(id="session-id", data=session_id),
-            dcc.Store(id="dataProcessedFlag", data=False),
+            dcc.Store(id="data_uploaded_flag", data=False),
             dcc.Store(id="dataClusteredFlag", data=False),
             horz_line,
             dbc.Row(
@@ -560,7 +607,7 @@ app.layout = serve_layout
 ########################################################################
 @app.callback(
     [
-        Output("dataProcessedFlag", "data"),
+        Output("data_uploaded_flag", "data"),
         Output("fileInfo", "children"),
         Output("graph3DButton", "disabled"),
     ],
@@ -570,7 +617,7 @@ app.layout = serve_layout
         State("session-id", "data"),
     ],
 )
-def upload_data_reset_components(isCompleted, filename, session_id):
+def upload_data(isCompleted, filename, session_id):
     # the content needs to be split. It contains the type and the real content
     if isCompleted:
         global redis_client
@@ -580,7 +627,6 @@ def upload_data_reset_components(isCompleted, filename, session_id):
         # store dataset name in redis
         if not redis_client.sismember(f"{session_id}:datasets", dataset_name):
             # arrange and extract files
-            print("[INFO]: filename:", filename)
             move_unzip_uploaded_file(session_id, filename)
             # should only add dataset name to our redis Set, IF zip upload/extract succesful
             redis_client.sadd(f"{session_id}:datasets", dataset_name)
@@ -597,79 +643,62 @@ def upload_data_reset_components(isCompleted, filename, session_id):
 
 
 ########################################################################
-""" [CALLBACK]: upload image file and find similar images """
+""" [CALLBACK]: Insert progress bar """
 ########################################################################
 @app.callback(
     [
-        Output("image_file_info", "children"),
-        Output("preview_test_image", "children"),
-        Output("search_preview", "children"),
-        Output("download_search_button", "href"),
+        Output("data_info_div", "children"),
+        Output("timer_progress", "disabled"),
     ],
-    [Input("upload_image_file_button", "contents")],
     [
-        State("upload_image_file_button", "filename"),
-        State("session-id", "data"),
-        State("dataClusteredFlag", "data"),
+        Input("graph3DButton", "n_clicks"),
+        Input("graph2D", "figure"),
     ],
+    [
+        State("dummy_percent_clustered_data", "children"),
+        State("data_uploaded_flag", "data"),
+    ],
+    prevent_initial_call=True,
 )
-def uploadData(content, filename, session_id, dataClusteredFlag):
-    if content is not None and dataClusteredFlag:
-        content_type, content_str = content.split(",")
-        output_filename = (
-            html.P(
-                children=["[Filename]: ", html.Br(), filename],
-                style={
-                    "textAlign": "left",
-                    "padding": "10px",
-                    "word-wrap": "break-word",
-                },
-            ),
-        )
-        # TODO: Why am I using content and not content_str? maybe cuz html img default something?
-        test_image = html.Div(
-            [
-                html.Img(
-                    src=content,
-                    style={
-                        "width": "100%",
-                        "height": "100%",
-                        "min-height": "10vh",
-                        "max-height": "15vh",
-                        "object-fit": "contain",
-                    },
-                )
-            ],
-        )
-        # content is an encoded picture
-        # decode picture and save as file
-        dataset_name = redis_client.get(f"{session_id}:curr_dataset")
-        test_image_folder = f"assets/{session_id}/{dataset_name}/image_search/input/"
-        if not os.path.exists(test_image_folder):
-            os.makedirs(test_image_folder)
-        del_folder_contents(test_image_folder)
-        test_image_path = os.path.join(test_image_folder, filename)
-        with open(test_image_path, "wb") as f:
-            img_bytes = base64.b64decode(content.split("base64,")[-1])
-            f.write(img_bytes)
-        # print("test_image_path is:", test_image_path)
-        # search for 6 similar images
-        result_idxs = find_similar_imgs(session_id, dataset_name, test_image_path)
-        # display them
-        result_preview = gen_img_preview(
-            redis_client, session_id, dataset_name, result_idxs[0], scale=0.99
-        )
-        prepare_preview_download(
-            redis_client,
-            session_id,
-            dataset_name,
-            result_idxs[0],
-            "image_search/search_results",
-        )
-        dataset_dir = f"assets/{session_id}/{dataset_name}/image_search"
-        preview_zip_path = os.path.join(dataset_dir, "search_results.zip")
-        return output_filename, test_image, result_preview, preview_zip_path
-    return no_update, no_update, no_update, no_update
+def insert_prog_bar(
+    n_clicks: int, figure, percent_clustered_components, data_uploaded_flag
+):
+    if data_uploaded_flag:
+        ctx = dash.callback_context
+        # if this callback was fired after clicking gen graphs, populate info
+        # div with the progress bar.
+        if ctx.triggered[0]["prop_id"] == "graph3DButton.n_clicks":
+            # remember to return num clicks
+            print("entered from 3D graph button")
+            return progress_text, False
+        # otherwise triggered by update to the 2D figure, use dummy div
+        # holding percent clustered data to update progress area
+        # if ctx.triggered[0]["prop_id"] == "dummy_percent_clustered_data.children":
+        else:
+            print("entered from 2D graph update")
+            return percent_clustered_components, True
+    else:
+        return no_update, no_update
+
+
+########################################################################
+""" [CALLBACK]: Progress bar updater"""
+########################################################################
+@app.callback(
+    [
+        # Output("pbar", "value"),
+        # Output("pbar", "label"),
+        Output("progress_text", "children")
+    ],
+    [Input("timer_progress", "n_intervals")],
+    State("session-id", "data"),
+    prevent_initial_call=True,
+)
+def callback_progress(n_intervals: int, session_id):
+    # this fxn returns the label and percent value
+    # percent, text = parse_tqdm_progress(session_id)
+    last_line = parse_tqdm_progress(session_id)
+    return [last_line]
 
 
 ########################################################################
@@ -679,13 +708,13 @@ def uploadData(content, filename, session_id, dataClusteredFlag):
     [
         Output("mainGraph", "figure"),
         Output("dataClusteredFlag", "data"),
-        Output("dataInfo", "children"),
+        Output("dummy_percent_clustered_data", "children"),
         Output("download_clusters_button", "disabled"),
         Output("download_clusters_button", "href"),
     ],
     [Input("graph3DButton", "n_clicks"), Input("dash_uploader", "isCompleted")],
     [
-        State("dataProcessedFlag", "data"),
+        State("data_uploaded_flag", "data"),
         State("n_neighbors_slider", "value"),
         State("min_dist_slider", "value"),
         State("min_cluster_size_slider", "value"),
@@ -696,7 +725,7 @@ def uploadData(content, filename, session_id, dataClusteredFlag):
 def update_output(
     n_clicks,
     isCompleted,
-    dataProcessedFlag,
+    data_uploaded_flag,
     n_neighbors,
     min_dist,
     min_cluster_size,
@@ -716,7 +745,7 @@ def update_output(
         )
         return no_update, no_update, data_info_text, no_update, no_update
 
-    if dataProcessedFlag:
+    if n_clicks and data_uploaded_flag:
         global redis_client
         # Generate the 3D graph using most recently uploaded dataset
         dataset_name = redis_client.get(f"{session_id}:curr_dataset")
@@ -838,7 +867,7 @@ def display_hover(hoverData, dataClusteredFlag, session_id):
                 ),
                 # dbc.FormText(f"Name: {img_name}", style={"font-size": "x-small"}),
                 html.Span(
-                    f"cluster: {cluster}   ___   index: {hover_img_index}",
+                    f"cluster: {cluster}   ,   index: {hover_img_index}",
                     style={
                         "display": "block",
                         "font-size": "small",
@@ -977,19 +1006,85 @@ def display_selected_data(selectedData, session_id, active_tab):
         return no_update, no_update, no_update
 
 
+########################################################################
+""" [CALLBACK]: upload image file and find similar images """
+########################################################################
 @app.callback(
-    Output("dummy1", "children"),
-    Input("interval-component", "n_intervals"),
-    State("session-id", "data"),
+    [
+        Output("image_file_info", "children"),
+        Output("preview_test_image", "children"),
+        Output("search_preview", "children"),
+        Output("download_search_button", "href"),
+    ],
+    [Input("upload_image_file_button", "contents")],
+    [
+        State("upload_image_file_button", "filename"),
+        State("session-id", "data"),
+        State("dataClusteredFlag", "data"),
+    ],
 )
-def update_activity_timestamp(n, session_id):
-    # store and update redis timestamps for each user
-    global redis_client
-    curr_time = str(datetime.now())
-    redis_client.set(f"{session_id}:latest_timestamp", curr_time)
-    return no_update
+def uploadData(content, filename, session_id, dataClusteredFlag):
+    if content is not None and dataClusteredFlag:
+        content_type, content_str = content.split(",")
+        output_filename = (
+            html.P(
+                children=["[Filename]: ", html.Br(), filename],
+                style={
+                    "textAlign": "left",
+                    "padding": "10px",
+                    "word-wrap": "break-word",
+                },
+            ),
+        )
+        # TODO: Why am I using content and not content_str? maybe cuz html img default something?
+        test_image = html.Div(
+            [
+                html.Img(
+                    src=content,
+                    style={
+                        "width": "100%",
+                        "height": "100%",
+                        "min-height": "10vh",
+                        "max-height": "15vh",
+                        "object-fit": "contain",
+                    },
+                )
+            ],
+        )
+        # content is an encoded picture
+        # decode picture and save as file
+        dataset_name = redis_client.get(f"{session_id}:curr_dataset")
+        test_image_folder = f"assets/{session_id}/{dataset_name}/image_search/input/"
+        if not os.path.exists(test_image_folder):
+            os.makedirs(test_image_folder)
+        del_folder_contents(test_image_folder)
+        test_image_path = os.path.join(test_image_folder, filename)
+        with open(test_image_path, "wb") as f:
+            img_bytes = base64.b64decode(content.split("base64,")[-1])
+            f.write(img_bytes)
+        # print("test_image_path is:", test_image_path)
+        # search for 6 similar images
+        result_idxs = find_similar_imgs(session_id, dataset_name, test_image_path)
+        # display them
+        result_preview = gen_img_preview(
+            redis_client, session_id, dataset_name, result_idxs[0], scale=0.99
+        )
+        prepare_preview_download(
+            redis_client,
+            session_id,
+            dataset_name,
+            result_idxs[0],
+            "image_search/search_results",
+        )
+        dataset_dir = f"assets/{session_id}/{dataset_name}/image_search"
+        preview_zip_path = os.path.join(dataset_dir, "search_results.zip")
+        return output_filename, test_image, result_preview, preview_zip_path
+    return no_update, no_update, no_update, no_update
 
 
+########################################################################
+""" [CALLBACK]: Selection Preview / Image serch tab """
+########################################################################
 @app.callback(
     Output("card-content", "children"),
     [Input("card-tabs", "active_tab")],
@@ -1047,6 +1142,25 @@ def tab_content(active_tab, session_id):
     return content
 
 
+########################################################################
+""" [CALLBACK]: Interval to check user activity"""
+########################################################################
+@app.callback(
+    Output("dummy1", "children"),
+    Input("interval-component", "n_intervals"),
+    State("session-id", "data"),
+)
+def update_activity_timestamp(n, session_id):
+    # store and update redis timestamps for each user
+    global redis_client
+    curr_time = str(datetime.now())
+    redis_client.set(f"{session_id}:latest_timestamp", curr_time)
+    return no_update
+
+
+########################################################################
+""" [CALLBACK]: Run server """
+########################################################################
 if __name__ == "__main__":
     # start thread for user activity worker here
     x = threading.Thread(

@@ -10,6 +10,7 @@ except:
 import os
 import io
 import gc
+import sys
 import faiss
 import torch
 import pickle
@@ -21,7 +22,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from redis import Redis
-from tqdm import tqdm
+
 from zipfile import ZipFile
 
 from torchvision import transforms, models
@@ -78,18 +79,20 @@ def move_unzip_uploaded_file(session_id, file_name):
 
     if not os.path.exists(user_unzip_path):
         os.makedirs(user_unzip_path)
+    print(f"[INFO]: moving {temp_zip_path} to {user_unzip_path}")
     shutil.move(temp_zip_path, user_unzip_path)
-    print(f"[INFO]: moved {temp_zip_path} to {user_unzip_path}")
     file_path = os.path.join(user_unzip_path, f"{file_name[0]}")
     print("file_path:", file_path)
+
     with ZipFile(file_path, "r") as zipObj:
         zipObj.extractall(user_unzip_path)
     print(f"[INFO]: extracted {file_path} to {user_unzip_path}")
+
     unzip_dir = os.path.join(user_unzip_path, dataset_name)
     # remove the zip file
     os.remove(file_path)
-    # clean dir structure if needed
-    print("[INFO]: Arranging", user_unzip_path, "and", dataset_name)
+    # clean dir structure if neededs
+    print(f"[INFO]: Arranging {user_unzip_path} and {dataset_name}")
     arrange_unzip_dir(user_unzip_path, dataset_name)
     # remove the mac zip dir if necessary
     mac_zip_dir = os.path.join(user_unzip_path, dataset_name, "__MACOSX")
@@ -124,7 +127,6 @@ def decode_and_extract_zip(session_id: str, dataset_name: str, content_string: s
     # make sure to recreate the needed directory and unzip
     os.makedirs(unzip_dir)
     zip_obj.extractall(unzip_dir)
-    # correct for inconsistent unzipping (sometimes save as files or as folder with files)
     gc.collect()
     arrange_unzip_dir(unzip_dir, dataset_name)
 
@@ -162,7 +164,7 @@ def load_features_paths(session_id: str, dataset_name: str, redis_client: Redis)
     else:
         # Extract using model and save features+img_paths
         unzip_dir = f"assets/{session_id}/{dataset_name}/unzipped"
-        features, img_paths = extract_features_paths(unzip_dir)
+        features, img_paths = extract_features_paths(unzip_dir, session_id)
         index = faiss.IndexFlatL2(2048)
         index.add(features)
         # Cache features and index on file system
@@ -211,7 +213,13 @@ def setup_umap(
         print(
             f"[INFO][STARTED]: Dimensionality reduction... this could take a few minutes."
         )
-        # print("features before umapping:", features)
+
+        # save current system exceptions file that tqdm writes to
+        std_err_backup = sys.stderr
+        file_prog = open(f"assets/{session_id}/progress.txt", "w")
+        sys.stderr = file_prog
+
+        # start writing to tqdm progress file
         embeddings = UMAP(
             n_neighbors=n_neighbors,
             min_dist=min_dist,
@@ -220,7 +228,13 @@ def setup_umap(
             random_state=24,
             transform_seed=24,
             verbose=True,
+            tqdm_kwds={"bar_format": "{l_bar}{bar:3}{r_bar}{bar:-3b}"},
         ).fit_transform(features)
+
+        # close progress file
+        file_prog.close()
+        sys.stderr = std_err_backup
+
         pickle.dump(embeddings, open(path_to_embeddings_pickle, "wb"))
         print(f"[INFO][DONE]: Dimensionality reduction.")
 
@@ -506,3 +520,43 @@ def find_similar_imgs(session_id, dataset_name, test_image_path: str) -> list:
         distance, indices = index.search(query_descriptors.reshape(1, 2048), 12)
 
     return indices
+
+
+def parse_tqdm_progress(session_id):
+    # try:
+    #     with open(f"assets/{session_id}/progress.txt", "r") as file:
+    #         str_raw = file.read()
+    #     last_line = list(filter(None, str_raw.split("\n")))[-1]
+    #     print("last_line", last_line)
+    #     percent = float(last_line.split("%")[0])
+
+    # except:
+    #     percent = 0
+
+    # finally:
+    #     text = f"{percent:.0f}%"
+    #     return percent, text
+    try:
+        with open(f"assets/{session_id}/progress.txt", "r") as file:
+            str_raw = file.read()
+        last_line = list(filter(None, str_raw.split("\n")))[-1]
+        text_split = last_line.split(": ")
+        if text_split[0] == "Epochs completed":
+            return_text = "UMAP: " + text_split[1]
+        else:
+            return_text = "ResNet: " + last_line
+        return return_text
+    except:
+        return "Processing..."
+
+
+def del_folder_contents(path_to_folder):
+    list_dir = os.listdir(path_to_folder)
+    for filename in list_dir:
+        file_path = os.path.join(path_to_folder, filename)
+        if os.path.isfile(file_path) or os.path.islink(file_path):
+            print("deleting file:", file_path)
+            os.unlink(file_path)
+        elif os.path.isdir(file_path):
+            print("deleting folder:", file_path)
+            shutil.rmtree(file_path)

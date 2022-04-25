@@ -169,4 +169,5 @@ def create_info_loading(id: str, children: list):
                 },
             )
         ],
+        type="graph",
     )

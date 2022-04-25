@@ -7,6 +7,8 @@ To prepare our data, we'll be following what is loosely known as an `ETL` proces
 - `L`oad data into a suitable structure. (Put data into an `object` to 
     make it easily accessible.)
 """
+import sys
+import time
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -14,7 +16,7 @@ from torch.utils.data import DataLoader
 from torchvision import models, transforms, datasets
 
 
-def extract_features_paths(data_directory):
+def extract_features_paths(data_directory, session_id):
     class ImageFolderWithPaths(datasets.ImageFolder):
         """Custom dataset that includes image file paths. Extends
         torchvision.datasets.ImageFolder
@@ -64,10 +66,20 @@ def extract_features_paths(data_directory):
     model.to(DEVICE)
     with torch.no_grad():
         model.eval()
-        for inputs, labels, paths in tqdm(dataloader):
+        # save current system exceptions file that tqdm writes to
+        std_err_backup = sys.stderr
+        file_prog = open(f"assets/{session_id}/progress.txt", "w")
+        sys.stderr = file_prog
+        # start writing to tqdm progress file
+        for inputs, labels, paths in tqdm(
+            dataloader, bar_format="{l_bar}{bar:3}{r_bar}{bar:-3b}"
+        ):
             result = pooling_output(inputs.to(DEVICE), model)
             features.append(result.cpu().view(1, -1).numpy())
             torch.cuda.empty_cache()
+        # close progress file
+        file_prog.close()
+        sys.stderr = std_err_backup
 
     print(f"[INFO][DONE] Feature Extraction using {model.__class__.__name__}")
 
