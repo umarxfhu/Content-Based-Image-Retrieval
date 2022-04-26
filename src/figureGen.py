@@ -97,7 +97,7 @@ def generate_fig(
             labels={"color": "cluster"},
         )
         scatterPlot.update_traces(
-            marker=dict(size=4),
+            marker=dict(size=3),
             customdata=img_paths,
             hoverinfo="none",
             hovertemplate=None,

@@ -464,6 +464,8 @@ def serve_layout():
             html.Div(id="dummy1"),
             # Using dummy div to keep info % clustered output (dash doesnt allow two callbacks with same output)
             html.Div(id="dummy_percent_clustered_data", style={"display": "none"}),
+            # to store upload completion status/info
+            html.Div(id="new_data_path", style={"display": "none"}),
             # In browser storage objects
             dcc.Store(id="session-id", data=session_id),
             dcc.Store(id="data_uploaded_flag", data=False),
@@ -499,8 +501,8 @@ def serve_layout():
                                                                 #     "minHeight": "2vh",
                                                                 #     "lineHeight": "2vh",
                                                                 # },
-                                                                max_file_size=20024,
                                                                 upload_id=session_id,
+                                                                max_file_size=20024,
                                                             ),
                                                             style=dash_uploader_style,
                                                         ),
@@ -603,6 +605,20 @@ app.layout = serve_layout
 ################################################################################
 """ Callback fxns: """
 ################################################################################
+
+
+@du.callback(
+    output=Output("new_data_path", "children"),
+    id="dash_uploader",
+)
+def callback_on_completion(status):  # <------- NEW: du.UploadStatus
+    if status.is_completed:
+        return str(status.latest_file)
+    else:
+        print("Error: upload callback triggered but not complete")
+        return no_update
+
+
 ########################################################################
 """ [CALLBACK]: upload zip file and extract features/paths """
 ########################################################################
@@ -612,23 +628,24 @@ app.layout = serve_layout
         Output("fileInfo", "children"),
         Output("graph3DButton", "disabled"),
     ],
-    [Input("dash_uploader", "isCompleted")],
+    [Input("new_data_path", "children")],
     [
-        State("dash_uploader", "fileNames"),
         State("session-id", "data"),
     ],
+    prevent_initial_call=True,
 )
-def upload_data(isCompleted, filename, session_id):
+def upload_data(new_data_path: str, session_id):
+    print("new_data_path", new_data_path)
     # the content needs to be split. It contains the type and the real content
-    if isCompleted:
+
+    if new_data_path:
         global redis_client
-        # remove the extension part (.zip) from the filename
-        print("filename", filename)
-        dataset_name = os.path.splitext(filename[0])[0]
+        dataset_name = new_data_path.split("/")[-1].split(".zip")[0]
+        print("dataset_name", dataset_name)
         # store dataset name in redis
         if not redis_client.sismember(f"{session_id}:datasets", dataset_name):
             # arrange and extract files
-            move_unzip_uploaded_file(session_id, filename)
+            move_unzip_uploaded_file(session_id, new_data_path)
             # should only add dataset name to our redis Set, IF zip upload/extract succesful
             redis_client.sadd(f"{session_id}:datasets", dataset_name)
         # Update the current dataset being used by user
@@ -640,6 +657,7 @@ def upload_data(isCompleted, filename, session_id):
             rightText=dataset_name,
         )
         return [True], outputText, False
+
     return no_update, no_update, no_update
 
 
@@ -734,17 +752,18 @@ def update_output(
     session_id,
 ):
     # After feature extraction, enable 3D graph gen button
-    ctx = dash.callback_context
-    # check if this callback was fired after a dataset upload,
-    # if yes set datainfo back to button click instruction.
-    if (
-        ctx.triggered[0]["prop_id"] == "dash_uploader.isCompleted"
-        and ctx.triggered[0]["value"]
-    ):
-        data_info_text = create_info_loading(
-            id="dataInfo", children=["Click the generate graphs button below."]
-        )
-        return no_update, no_update, data_info_text, no_update, no_update
+    # ctx = dash.callback_context
+    # # check if this callback was fired after a dataset upload,
+    # # if yes set datainfo back to button click instruction.
+    # # TODO: Dash uploader is completed is deprecated, update bellow ctx checker
+    # if (
+    #     ctx.triggered[0]["prop_id"] == "dash_uploader.isCompleted"
+    #     and ctx.triggered[0]["value"]
+    # ):
+    #     data_info_text = create_info_loading(
+    #         id="dataInfo", children=["Click the generate graphs button below."]
+    #     )
+    #     return no_update, no_update, data_info_text, no_update, no_update
 
     if n_clicks and data_uploaded_flag:
         global redis_client
@@ -1097,7 +1116,7 @@ def tab_content(active_tab, session_id):
             dbc.Row(
                 [preview_title],
             ),
-            horz_line,
+            # horz_line,
             dbc.Row(
                 dbc.Col(imagePreview),
                 justify="center",
