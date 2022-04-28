@@ -1,5 +1,5 @@
 try:
-    from cuml.manifold.Tumap import UMAP
+    from cuml import UMAP
 
     print("[INFO]: Using cuml UMAP")
 except:
@@ -7,6 +7,7 @@ except:
 
     print("[INFO]: CUML not available; using umap-learn UMAP")
 
+# from cuml import UMAP
 import os
 import io
 import gc
@@ -553,9 +554,14 @@ def find_similar_imgs(session_id, dataset_name, test_image_path: str) -> list:
         with open(path_to_index_pickle, "rb") as f:
             index = pickle.load(f)
 
+    # Search index for neighbor embeddings
     with torch.no_grad():
-        query_descriptors = pooling_output(input_tensor.to(DEVICE)).cpu().numpy()
-        distance, indices = index.search(query_descriptors.reshape(1, 2048), 12)
+        model.eval()
+        result = pooling_output(input_tensor.to(DEVICE))
+        query_descriptors = result.cpu().view(1, -1).numpy()
+        torch.cuda.empty_cache()
+
+    distances, indices = index.search(query_descriptors, 12)
 
     return indices
 

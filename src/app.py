@@ -18,17 +18,11 @@ from dash.dependencies import Input, Output, State
 # https://github.com/np-8/dash-uploader
 import dash_uploader as du
 
-# Long callback imports
-import diskcache
-from dash.long_callback import DiskcacheLongCallbackManager
-
 # Local Modules
 from worker import poll_remove_user_data
 from dataset import (
     move_unzip_uploaded_file,
     create_clusters_zip,
-    setup_umap,
-    get_labels,
     gen_img_uri,
     prepare_preview_download,
     del_folder_contents,
@@ -56,14 +50,11 @@ redis_client = Redis(host="127.0.0.1", port=6379, db=0, decode_responses=True)
 # [TODO]: before deploying consider memory management i.e when should you clear redis
 redis_client.flushall()
 
-# setup long callback diskcache
-lcm = DiskcacheLongCallbackManager(diskcache.Cache("./callback_cache"))
 
 # Define dash app
 app = dash.Dash(
     __name__,
     server=server,
-    long_callback_manager=lcm,
     external_stylesheets=[dbc.themes.CYBORG],
 )
 
@@ -1016,6 +1007,7 @@ def display_selected_data(selectedData, session_id, active_tab):
         Output("preview_test_image", "children"),
         Output("search_preview", "children"),
         Output("download_search_button", "href"),
+        Output("download_search_button", "disabled"),
     ],
     [Input("upload_image_file_button", "contents")],
     [
@@ -1079,8 +1071,8 @@ def uploadData(content, filename, session_id, dataClusteredFlag):
         )
         dataset_dir = f"assets/{session_id}/{dataset_name}/image_search"
         preview_zip_path = os.path.join(dataset_dir, "search_results.zip")
-        return output_filename, test_image, result_preview, preview_zip_path
-    return no_update, no_update, no_update, no_update
+        return output_filename, test_image, result_preview, preview_zip_path, False
+    return no_update, no_update, no_update, no_update, no_update
 
 
 ########################################################################
@@ -1097,7 +1089,7 @@ def tab_content(active_tab, session_id):
             dbc.Row(
                 [preview_title],
             ),
-            horz_line,
+            # horz_line,
             dbc.Row(
                 dbc.Col(imagePreview),
                 justify="center",
@@ -1168,4 +1160,4 @@ if __name__ == "__main__":
         target=poll_remove_user_data, args=(redis_client,), daemon=True
     )
     x.start()
-    server.run(debug=True, host="0.0.0.0", port=5050)
+    server.run(debug=True, host="127.0.0.1", port=5050)

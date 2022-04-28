@@ -611,12 +611,14 @@ app.layout = serve_layout
     output=Output("new_data_path", "children"),
     id="dash_uploader",
 )
-def callback_on_completion(status):  # <------- NEW: du.UploadStatus
-    if status.is_completed:
-        return str(status.latest_file)
-    else:
-        print("Error: upload callback triggered but not complete")
-        return no_update
+def callback_on_completion(filenames):  # <------- NEW: du.UploadStatus
+    # if status.is_completed:
+    #     return str(status.latest_file)
+    # else:
+    #     print("Error: upload callback triggered but not complete")
+    #     return no_update
+    print("filenames", filenames)
+    return filenames[0]
 
 
 ########################################################################
