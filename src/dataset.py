@@ -82,24 +82,24 @@ def arrange_unzip_dir(unzip_dir, dataset_name):
 #         os.makedirs(user_unzip_path)
 #     print(f"[INFO]: moving {new_data_path} to {user_unzip_path}")
 #     shutil.move(new_data_path, user_unzip_path)
-#     file_path = os.path.join(user_unzip_path, f"{zip_file_name}")
-#     print("file_path:", file_path)
+# file_path = os.path.join(user_unzip_path, f"{zip_file_name}")
+# print("file_path:", file_path)
 
-#     with ZipFile(file_path, "r") as zipObj:
-#         zipObj.extractall(user_unzip_path)
-#     print(f"[INFO]: extracted {file_path} to {user_unzip_path}")
-#     # remove the zip file
-#     os.remove(file_path)
-#     # clean dir structure if neededs
-#     print(f"[INFO]: Arranging {user_unzip_path} and {dataset_name}")
-#     arrange_unzip_dir(user_unzip_path, dataset_name)
-#     # remove the mac zip dir if necessary
-#     mac_zip_dir = os.path.join(user_unzip_path, dataset_name, "__MACOSX")
-#     if os.path.exists(mac_zip_dir):
-#         print("removing mac dir:", mac_zip_dir)
-#         shutil.rmtree(mac_zip_dir)
-#     # remove the temp dir
-#     shutil.rmtree(temp_upload_dir)
+# with ZipFile(file_path, "r") as zipObj:
+#     zipObj.extractall(user_unzip_path)
+# print(f"[INFO]: extracted {file_path} to {user_unzip_path}")
+# # remove the zip file
+# os.remove(file_path)
+# # clean dir structure if neededs
+# print(f"[INFO]: Arranging {user_unzip_path} and {dataset_name}")
+# arrange_unzip_dir(user_unzip_path, dataset_name)
+# # remove the mac zip dir if necessary
+# mac_zip_dir = os.path.join(user_unzip_path, dataset_name, "__MACOSX")
+# if os.path.exists(mac_zip_dir):
+#     print("removing the mac_zip_dir:", mac_zip_dir)
+#     shutil.rmtree(mac_zip_dir)
+# # remove the temp dir
+# shutil.rmtree(temp_upload_dir)
 
 
 def move_unzip_uploaded_file(session_id, file_name):
@@ -135,9 +135,8 @@ def move_unzip_uploaded_file(session_id, file_name):
     arrange_unzip_dir(user_unzip_path, dataset_name)
     # remove the mac zip dir if necessary
     mac_zip_dir = os.path.join(user_unzip_path, dataset_name, "__MACOSX")
-    print("mac_zip_dir:", mac_zip_dir)
     if os.path.exists(mac_zip_dir):
-        print("removing the ")
+        print("removing the mac_zip_dir:", mac_zip_dir)
         shutil.rmtree(mac_zip_dir)
     # remove the temp dir
     shutil.rmtree(temp_upload_dir)

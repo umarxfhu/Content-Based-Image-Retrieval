@@ -19,6 +19,7 @@ from dash.dependencies import Input, Output, State
 import dash_uploader as du
 
 # Local Modules
+from config import config
 from worker import poll_remove_user_data
 from dataset import (
     move_unzip_uploaded_file,
@@ -43,13 +44,18 @@ from figureGen import blankFig, generate_fig
 ################################################################################
 
 server = flask.Flask(__name__)
+
 # Initialize Cache
 # use host="redis" if running redis server with docker #
 # "127.0.0.1" if locally (without Docker)
-redis_client = Redis(host="127.0.0.1", port=6379, db=0, decode_responses=True)
+redis_client = Redis(
+    host=config["app"]["redis_host"],
+    port=config["app"]["redis_port"],
+    db=0,
+    decode_responses=True,
+)
 # [TODO]: before deploying consider memory management i.e when should you clear redis
 redis_client.flushall()
-
 
 # Define dash app
 app = dash.Dash(
@@ -608,6 +614,7 @@ app.layout = serve_layout
         State("dash_uploader", "fileNames"),
         State("session-id", "data"),
     ],
+    prevent_initial_call=True,
 )
 def upload_data(isCompleted, filename, session_id):
     # the content needs to be split. It contains the type and the real content
@@ -641,6 +648,7 @@ def upload_data(isCompleted, filename, session_id):
     [
         Output("data_info_div", "children"),
         Output("timer_progress", "disabled"),
+        Output("dash_uploader", "disabled"),
     ],
     [
         Input("graph3DButton", "n_clicks"),
@@ -662,15 +670,15 @@ def insert_prog_bar(
         if ctx.triggered[0]["prop_id"] == "graph3DButton.n_clicks":
             # remember to return num clicks
             print("entered from 3D graph button")
-            return progress_text, False
+            return progress_text, False, True
         # otherwise triggered by update to the 2D figure, use dummy div
         # holding percent clustered data to update progress area
         # if ctx.triggered[0]["prop_id"] == "dummy_percent_clustered_data.children":
         else:
             print("entered from 2D graph update")
-            return percent_clustered_components, True
+            return percent_clustered_components, True, False
     else:
-        return no_update, no_update
+        return no_update, no_update, no_update
 
 
 ########################################################################
@@ -1029,7 +1037,7 @@ def uploadData(content, filename, session_id, dataClusteredFlag):
                 },
             ),
         )
-        # TODO: Why am I using content and not content_str? maybe cuz html img default something?
+        # TODO: Why am I using content and not content_str? maybe because html img default something?
         test_image = html.Div(
             [
                 html.Img(
@@ -1160,4 +1168,6 @@ if __name__ == "__main__":
         target=poll_remove_user_data, args=(redis_client,), daemon=True
     )
     x.start()
-    server.run(debug=True, host="127.0.0.1", port=5050)
+    server.run(
+        debug=False, host=config["app"]["flask_host"], port=config["app"]["flask_port"]
+    )

@@ -7,6 +7,7 @@ src/debug_resources/
 playground_notebooks/resources
 playground_notebooks/MNIST*
 callback_cache/
+assets
 
 ### Flask ###
 instance/*

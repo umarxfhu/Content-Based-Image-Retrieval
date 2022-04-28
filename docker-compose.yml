@@ -8,10 +8,8 @@ services:
     links:
       - redis
     entrypoint: python app.py
-    env_file:
-      - .env
     ports:
-      - '5000:5000'
+      - '5050:5050'
     deploy:
       resources:
         reservations:
