@@ -7,9 +7,9 @@ services:
     build: .
     links:
       - redis
-    entrypoint: python app.py
+    entrypoint: python main.py
     ports:
-      - '5050:5050'
+      - '80:80'
     deploy:
       resources:
         reservations:

@@ -13,7 +13,6 @@ from dash import html, dcc, no_update
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 
-
 # open source dash functionality
 # https://github.com/np-8/dash-uploader
 import dash_uploader as du
@@ -40,31 +39,30 @@ from componentBuilder import (
 from figureGen import blankFig, generate_fig
 
 ################################################################################
-""" Initialize Dash App, Redis, Uploader: """
+""" Initialize Flask Server, Redis, Dash App, Uploader: """
 ################################################################################
 
-server = flask.Flask(__name__)
+app = flask.Flask(__name__)
 
 # Initialize Cache
-# use host="redis" if running redis server with docker #
-# "127.0.0.1" if locally (without Docker)
 redis_client = Redis(
     host=config["app"]["redis_host"],
     port=config["app"]["redis_port"],
     db=0,
     decode_responses=True,
 )
-# [TODO]: before deploying consider memory management i.e when should you clear redis
+# Each time the app server is restarted, redis will be cleared
 redis_client.flushall()
 
 # Define dash app
-app = dash.Dash(
+dash_app = dash.Dash(
     __name__,
-    server=server,
+    server=app,
     external_stylesheets=[dbc.themes.CYBORG],
 )
 
-du.configure_upload(app, "assets/temp")
+# The temporary folder where uploads are stored before being reorganized to user assets.
+du.configure_upload(dash_app, "assets/temp")
 
 ################################################################################
 """ Dash Components: """
@@ -92,10 +90,10 @@ title = dbc.Card(
 # ------------------------------------------------------------------------------
 #   3D Graph and it's Control Components
 # ------------------------------------------------------------------------------
-graphWithLoadingAnimation = dcc.Loading(
+graph_with_loading_animation = dcc.Loading(
     children=[
         dcc.Graph(
-            id="mainGraph",
+            id="main_graph",
             clear_on_unhover=True,
             figure=blankFig(),
             loading_state={"is_loading": False},
@@ -111,18 +109,15 @@ dash_uploader_style = {  # wrapper div style
     "padding": "10px",
     "display": "inline-block",
 }
-fileInfo = create_info_loading(
-    id="fileInfo", children=["Upload FolderOfImagesYouWishToCluster.zip"]
+file_info = create_info_loading(
+    id="file_info", children=["Upload FolderOfImagesYouWishToCluster.zip"]
 )
-# dataInfo = create_info_loading(
-#     id="dataInfo", children=["Then click the generate graphs button below."]
-# )
 data_info_text = html.Span(
-    id="dataInfo",
+    id="data_info",
     children=["Then click the generate graphs button below."],
     style={"font-size": "15px"},
 )
-dataInfo = html.Div(
+data_info = html.Div(
     id="data_info_div",
     children=[data_info_text],
     style={
@@ -223,8 +218,8 @@ min_cluster_size_slider = [
 
 min_samples_left_text = (
     "The simplest intuition for what min_samples does is provide a measure of how "
-    "conservative you want you clustering to be. The larger the value of min_samples "
-    "you provide, the more conservative the clustering - more points will be "
+    "conservative you want your clustering to be. The larger the value of min_samples "
+    "you provide, the more conservative the clustering - so more points will be "
     "declared as noise, and clusters will be restricted to progressively more "
     "dense areas. Steadily increasing min_samples will, as we saw in the examples "
     "above, make the clustering progressively more conservative."
@@ -253,17 +248,17 @@ min_samples_slider = [
 download_clusters_button = gen_download_button(
     id="download_clusters_button",
     children=["Download 3D Clusters"],
-    href=app.get_asset_url("clusters.zip"),
+    href=dash_app.get_asset_url("clusters.zip"),
 )
-graph3DButton = dbc.Button(
+graph_3D_button = dbc.Button(
     children=["Generate Graphs"],
-    id="graph3DButton",
+    id="graph_3D_button",
     n_clicks=0,
     disabled=True,
     color="primary",
 )
-card3DButtons = html.Div(
-    children=[html.Div(download_clusters_button), html.Div(graph3DButton)],
+card_3D_buttons = html.Div(
+    children=[html.Div(download_clusters_button), html.Div(graph_3D_button)],
     style={"display": "flex", "justify-content": "space-around"},
 )
 controls_title = html.Div(
@@ -280,10 +275,10 @@ controls_title = html.Div(
 # ------------------------------------------------------------------------------
 #   2D Graph Components
 # ------------------------------------------------------------------------------
-graph2D = dcc.Loading(
+graph_2D = dcc.Loading(
     children=[
         dcc.Graph(
-            id="graph2D",
+            id="graph_2D",
             clear_on_unhover=True,
             figure=blankFig(),
             loading_state={"is_loading": True},
@@ -291,10 +286,10 @@ graph2D = dcc.Loading(
     ],
     type="graph",
 )
-imagePreview = dcc.Loading(
+image_preview = dcc.Loading(
     children=[
         html.Div(
-            id="imagePreview",
+            id="image_preview",
             children=[
                 "Use the box or lasso selector on the 2D graph to preview selected images."
             ],
@@ -310,7 +305,7 @@ imagePreview = dcc.Loading(
 download_preview_button = gen_download_button(
     id="download_preview_button",
     children=["Download"],
-    href=app.get_asset_url("preview_2D.zip"),
+    href=dash_app.get_asset_url("preview_2D.zip"),
 )
 preview_download_name_input = html.Div(
     [
@@ -351,27 +346,6 @@ download_search_button = html.Div(
     ],
     style={"display": "flex", "align-items": "center", "justify-content": "center"},
 )
-# image_search_title = html.Div(
-#     children=[
-#         html.Div(
-#             [upload_image_file_button],
-#             style={
-#                 "textAlign": "left",
-#                 "width": "47%",
-#                 "display": "inline-block",
-#                 "margin-left": "2%",
-#             },
-#         ),
-#         html.Div(
-#             [download_search_button],
-#             style={
-#                 "textAlign": "right",
-#                 "width": "50%",
-#                 "display": "inline-block",
-#             },
-#         ),
-#     ],
-# )
 image_file_info = create_info_loading(id="image_file_info", children=[""])
 preview_test_image = html.Div(
     id="preview_test_image",
@@ -414,7 +388,6 @@ jump_up_button = dbc.Button(
     disabled=False,
     color="primary",
 )
-
 preview_and_search_card = dbc.Card(
     [
         dbc.CardHeader(
@@ -430,7 +403,6 @@ preview_and_search_card = dbc.Card(
         dbc.CardBody(html.Div(id="card-content")),
     ]
 )
-
 # Progress bar components
 progress_text = html.Div(
     id="progress_text",
@@ -438,7 +410,6 @@ progress_text = html.Div(
     style={"font-size": "small"},
 )
 progress_interval = dcc.Interval(id="timer_progress", interval=1000, disabled=True)
-
 # User timestamp updater
 activity_interval = dcc.Interval(
     id="interval-component",
@@ -462,13 +433,12 @@ def serve_layout():
             # Using dummy div to keep info % clustered output (dash doesnt allow two callbacks with same output)
             html.Div(id="dummy_percent_clustered_data", style={"display": "none"}),
             # In browser storage objects
-            dcc.Store(id="session-id", data=session_id),
+            dcc.Store(id="session_id", data=session_id),
             dcc.Store(id="data_uploaded_flag", data=False),
-            dcc.Store(id="dataClusteredFlag", data=False),
+            dcc.Store(id="data_clustered_flag", data=False),
             horz_line,
             dbc.Row(
                 [
-                    # Controls card here
                     dbc.Col(
                         dbc.Card(
                             [
@@ -476,8 +446,8 @@ def serve_layout():
                                     children=[
                                         dbc.Row(title),
                                         # dbc.Row(horz_line),
-                                        dbc.Row(fileInfo),
-                                        dbc.Row(dataInfo),
+                                        dbc.Row(file_info),
+                                        dbc.Row(data_info),
                                         dbc.Row(
                                             [
                                                 # This component is verbosely placed in layout as it
@@ -490,12 +460,6 @@ def serve_layout():
                                                                 text="Drag/Select Zip",
                                                                 max_files=1,
                                                                 filetypes=["zip"],
-                                                                # changes default size breaks it when download starts
-                                                                # default_style={
-                                                                #     "overflow": "hide",
-                                                                #     "minHeight": "2vh",
-                                                                #     "lineHeight": "2vh",
-                                                                # },
                                                                 max_file_size=20024,
                                                                 upload_id=session_id,
                                                             ),
@@ -505,7 +469,6 @@ def serve_layout():
                                                 ),
                                             ]
                                         ),
-                                        # horz_line,
                                         dbc.Col(
                                             [
                                                 controls_title,
@@ -518,7 +481,7 @@ def serve_layout():
                                         ),
                                         horz_line,
                                         dbc.Row(
-                                            [card3DButtons],
+                                            [card_3D_buttons],
                                             justify="center",
                                             align="center",
                                         ),
@@ -535,30 +498,31 @@ def serve_layout():
                     ),
                     dbc.Col(
                         [
+                            # 3D Graph and its components
                             dbc.Row(
                                 children=[
-                                    graphWithLoadingAnimation,
+                                    graph_with_loading_animation,
                                     dcc.Tooltip(
-                                        id="mainGraphTooltip", direction="right"
+                                        id="main_graph_tooltip", direction="right"
                                     ),
-                                    dcc.Download(id="mainGraphDownload"),
+                                    dcc.Download(id="main_graph_download"),
                                 ],
                                 style={"height": "70vh"},
                             ),
                             horz_line,
                             dbc.Row(
                                 [
-                                    # 2d graph here
+                                    # 2D Graph and its components
                                     dbc.Col(
                                         children=[
-                                            graph2D,
+                                            graph_2D,
                                             dcc.Tooltip(
-                                                id="graph2DTooltip",
+                                                id="graph_2D_tooltip",
                                                 direction="right",
                                             ),
-                                            dcc.Download(id="graph2DDownload"),
+                                            dcc.Download(id="graph_2D_download"),
                                             horz_line,
-                                            # tabbed card here
+                                            # Tabbed card for preview and search here
                                             dbc.Row(
                                                 children=(
                                                     dbc.Col(
@@ -594,30 +558,40 @@ def serve_layout():
     )
 
 
-app.layout = serve_layout
+# Dynamically serve layout for each user that connects
+dash_app.layout = serve_layout
 
 
 ################################################################################
-""" Callback fxns: """
+""" Callback Functions: """
 ################################################################################
 ########################################################################
 """ [CALLBACK]: upload zip file and extract features/paths """
 ########################################################################
-@app.callback(
+@dash_app.callback(
     [
         Output("data_uploaded_flag", "data"),
-        Output("fileInfo", "children"),
-        Output("graph3DButton", "disabled"),
+        Output("file_info", "children"),
+        Output("graph_3D_button", "disabled"),
     ],
     [Input("dash_uploader", "isCompleted")],
     [
         State("dash_uploader", "fileNames"),
-        State("session-id", "data"),
+        State("session_id", "data"),
     ],
     prevent_initial_call=True,
 )
-def upload_data(isCompleted, filename, session_id):
-    # the content needs to be split. It contains the type and the real content
+def upload_handler(isCompleted: bool, filename: list, session_id: str):
+    """upload_handler Sets the dataset name in redis and unzips/organizes the
+    uploaded dataset into the users assets directory.
+    Args:
+        isCompleted (bool): This callback is triggered by updates to the 'isCompleted'
+        attribute of the dash-uploader component.
+        filename (list): Filename as provided by the dash-uploader component,
+        stored as a string in a list.
+        session_id (str): The uuid assigned to the users browser session,
+        used to identify their directory.
+    """
     if isCompleted:
         global redis_client
         # remove the extension part (.zip) from the filename
@@ -644,15 +618,15 @@ def upload_data(isCompleted, filename, session_id):
 ########################################################################
 """ [CALLBACK]: Insert progress bar """
 ########################################################################
-@app.callback(
+@dash_app.callback(
     [
         Output("data_info_div", "children"),
         Output("timer_progress", "disabled"),
         Output("dash_uploader", "disabled"),
     ],
     [
-        Input("graph3DButton", "n_clicks"),
-        Input("graph2D", "figure"),
+        Input("graph_3D_button", "n_clicks"),
+        Input("graph_2D", "figure"),
     ],
     [
         State("dummy_percent_clustered_data", "children"),
@@ -665,17 +639,11 @@ def insert_prog_bar(
 ):
     if data_uploaded_flag:
         ctx = dash.callback_context
-        # if this callback was fired after clicking gen graphs, populate info
-        # div with the progress bar.
-        if ctx.triggered[0]["prop_id"] == "graph3DButton.n_clicks":
-            # remember to return num clicks
-            print("entered from 3D graph button")
+        if ctx.triggered[0]["prop_id"] == "graph_3D_button.n_clicks":
             return progress_text, False, True
         # otherwise triggered by update to the 2D figure, use dummy div
         # holding percent clustered data to update progress area
-        # if ctx.triggered[0]["prop_id"] == "dummy_percent_clustered_data.children":
         else:
-            print("entered from 2D graph update")
             return percent_clustered_components, True, False
     else:
         return no_update, no_update, no_update
@@ -684,19 +652,14 @@ def insert_prog_bar(
 ########################################################################
 """ [CALLBACK]: Progress bar updater"""
 ########################################################################
-@app.callback(
-    [
-        # Output("pbar", "value"),
-        # Output("pbar", "label"),
-        Output("progress_text", "children")
-    ],
+@dash_app.callback(
+    [Output("progress_text", "children")],
     [Input("timer_progress", "n_intervals")],
-    State("session-id", "data"),
+    State("session_id", "data"),
     prevent_initial_call=True,
 )
 def callback_progress(n_intervals: int, session_id):
-    # this fxn returns the label and percent value
-    # percent, text = parse_tqdm_progress(session_id)
+    # This fxn returns the last line written to the progress file.
     last_line = parse_tqdm_progress(session_id)
     return [last_line]
 
@@ -704,23 +667,24 @@ def callback_progress(n_intervals: int, session_id):
 ########################################################################
 """ [CALLBACK]: Create 3D graph and update cluster download """
 ########################################################################
-@app.callback(
+@dash_app.callback(
     [
-        Output("mainGraph", "figure"),
-        Output("dataClusteredFlag", "data"),
+        Output("main_graph", "figure"),
+        Output("data_clustered_flag", "data"),
         Output("dummy_percent_clustered_data", "children"),
         Output("download_clusters_button", "disabled"),
         Output("download_clusters_button", "href"),
     ],
-    [Input("graph3DButton", "n_clicks"), Input("dash_uploader", "isCompleted")],
+    [Input("graph_3D_button", "n_clicks"), Input("dash_uploader", "isCompleted")],
     [
         State("data_uploaded_flag", "data"),
         State("n_neighbors_slider", "value"),
         State("min_dist_slider", "value"),
         State("min_cluster_size_slider", "value"),
         State("min_samples_slider", "value"),
-        State("session-id", "data"),
+        State("session_id", "data"),
     ],
+    prevent_initial_call=True,
 )
 def update_output(
     n_clicks,
@@ -735,13 +699,13 @@ def update_output(
     # After feature extraction, enable 3D graph gen button
     ctx = dash.callback_context
     # check if this callback was fired after a dataset upload,
-    # if yes set datainfo back to button click instruction.
+    # if yes set data_info back to button click instruction.
     if (
         ctx.triggered[0]["prop_id"] == "dash_uploader.isCompleted"
         and ctx.triggered[0]["value"]
     ):
         data_info_text = create_info_loading(
-            id="dataInfo", children=["Click the generate graphs button below."]
+            id="data_info", children=["Click the generate graphs button below."]
         )
         return no_update, no_update, data_info_text, no_update, no_update
 
@@ -787,26 +751,26 @@ def update_output(
 ########################################################################
 """ [CALLBACK]: Create 2D Graph """
 ########################################################################
-@app.callback(
-    [Output("graph2D", "figure")],
-    [Input("dataClusteredFlag", "data")],
+@dash_app.callback(
+    [Output("graph_2D", "figure")],
+    [Input("data_clustered_flag", "data")],
     [
         State("n_neighbors_slider", "value"),
         State("min_dist_slider", "value"),
         State("min_cluster_size_slider", "value"),
         State("min_samples_slider", "value"),
-        State("session-id", "data"),
+        State("session_id", "data"),
     ],
 )
 def create_graph_2D(
-    dataClusteredFlag,
+    data_clustered_flag,
     n_neighbors,
     min_dist,
     min_cluster_size,
     min_samples,
     session_id,
 ):
-    if dataClusteredFlag:
+    if data_clustered_flag:
         global redis_client
         # Calculate UMAP embeddings with two components.
         dataset_name = redis_client.get(f"{session_id}:curr_dataset")
@@ -829,21 +793,21 @@ def create_graph_2D(
 ########################################################################
 """ [CALLBACK]: 3D hover to show image """
 ########################################################################
-@app.callback(
+@dash_app.callback(
     [
-        Output("mainGraphTooltip", "show"),
-        Output("mainGraphTooltip", "bbox"),
-        Output("mainGraphTooltip", "children"),
-        # Output("mainGraphTooltip", "style"),
+        Output("main_graph_tooltip", "show"),
+        Output("main_graph_tooltip", "bbox"),
+        Output("main_graph_tooltip", "children"),
+        # Output("main_graph_tooltip", "style"),
     ],
-    [Input("mainGraph", "hoverData")],
+    [Input("main_graph", "hoverData")],
     [
-        State("dataClusteredFlag", "data"),
-        State("session-id", "data"),
+        State("data_clustered_flag", "data"),
+        State("session_id", "data"),
     ],
 )
-def display_hover(hoverData, dataClusteredFlag, session_id):
-    if (hoverData is None) or (not dataClusteredFlag):
+def display_hover(hoverData, data_clustered_flag, session_id):
+    if (hoverData is None) or (not data_clustered_flag):
         return False, no_update, no_update
     global redis_client
     dataset_name = redis_client.get(f"{session_id}:curr_dataset")
@@ -885,14 +849,14 @@ def display_hover(hoverData, dataClusteredFlag, session_id):
 ########################################################################
 """ [CALLBACK]: 2D Hover preview"""
 ########################################################################
-@app.callback(
+@dash_app.callback(
     [
-        Output("graph2DTooltip", "show"),
-        Output("graph2DTooltip", "bbox"),
-        Output("graph2DTooltip", "children"),
+        Output("graph_2D_tooltip", "show"),
+        Output("graph_2D_tooltip", "bbox"),
+        Output("graph_2D_tooltip", "children"),
     ],
-    [Input("graph2D", "hoverData")],
-    State("session-id", "data"),
+    [Input("graph_2D", "hoverData")],
+    State("session_id", "data"),
 )
 def display_hover2D(hoverData, session_id):
     if hoverData is None:
@@ -929,10 +893,10 @@ def display_hover2D(hoverData, session_id):
 ########################################################################
 """ [CALLBACK]: 3D Click Download"""
 ########################################################################
-@app.callback(
-    Output("mainGraphDownload", "data"),
-    Input("mainGraph", "clickData"),
-    State("session-id", "data"),
+@dash_app.callback(
+    Output("main_graph_download", "data"),
+    Input("main_graph", "clickData"),
+    State("session_id", "data"),
     prevent_initial_call=True,
 )
 def func(clickData, session_id):
@@ -947,10 +911,10 @@ def func(clickData, session_id):
 ########################################################################
 """ [CALLBACK]: 2D Click Download"""
 ########################################################################
-@app.callback(
-    Output("graph2DDownload", "data"),
-    Input("graph2D", "clickData"),
-    State("session-id", "data"),
+@dash_app.callback(
+    Output("graph_2D_download", "data"),
+    Input("graph_2D", "clickData"),
+    State("session_id", "data"),
     prevent_initial_call=True,
 )
 def func(clickData, session_id):
@@ -965,14 +929,14 @@ def func(clickData, session_id):
 ########################################################################
 """ [CALLBACK]: 2D Lasso to preview"""
 ########################################################################
-@app.callback(
+@dash_app.callback(
     [
-        Output("imagePreview", "children"),
+        Output("image_preview", "children"),
         Output("download_preview_button", "disabled"),
         Output("download_preview_button", "href"),
     ],
-    [Input("graph2D", "selectedData")],
-    [State("session-id", "data"), State("card-tabs", "active_tab")],
+    [Input("graph_2D", "selectedData")],
+    [State("session_id", "data"), State("card-tabs", "active_tab")],
     prevent_initial_call=True,
 )
 def display_selected_data(selectedData, session_id, active_tab):
@@ -1009,7 +973,7 @@ def display_selected_data(selectedData, session_id, active_tab):
 ########################################################################
 """ [CALLBACK]: upload image file and find similar images """
 ########################################################################
-@app.callback(
+@dash_app.callback(
     [
         Output("image_file_info", "children"),
         Output("preview_test_image", "children"),
@@ -1020,12 +984,12 @@ def display_selected_data(selectedData, session_id, active_tab):
     [Input("upload_image_file_button", "contents")],
     [
         State("upload_image_file_button", "filename"),
-        State("session-id", "data"),
-        State("dataClusteredFlag", "data"),
+        State("session_id", "data"),
+        State("data_clustered_flag", "data"),
     ],
 )
-def uploadData(content, filename, session_id, dataClusteredFlag):
-    if content is not None and dataClusteredFlag:
+def uploadData(content, filename, session_id, data_clustered_flag):
+    if content is not None and data_clustered_flag:
         content_type, content_str = content.split(",")
         output_filename = (
             html.P(
@@ -1086,10 +1050,10 @@ def uploadData(content, filename, session_id, dataClusteredFlag):
 ########################################################################
 """ [CALLBACK]: Selection Preview / Image serch tab """
 ########################################################################
-@app.callback(
+@dash_app.callback(
     Output("card-content", "children"),
     [Input("card-tabs", "active_tab")],
-    State("session-id", "data"),
+    State("session_id", "data"),
 )
 def tab_content(active_tab, session_id):
     if active_tab == "tab-1":
@@ -1099,7 +1063,7 @@ def tab_content(active_tab, session_id):
             ),
             # horz_line,
             dbc.Row(
-                dbc.Col(imagePreview),
+                dbc.Col(image_preview),
                 justify="center",
                 align="center",
             ),
@@ -1146,10 +1110,10 @@ def tab_content(active_tab, session_id):
 ########################################################################
 """ [CALLBACK]: Interval to check user activity"""
 ########################################################################
-@app.callback(
+@dash_app.callback(
     Output("dummy1", "children"),
     Input("interval-component", "n_intervals"),
-    State("session-id", "data"),
+    State("session_id", "data"),
 )
 def update_activity_timestamp(n, session_id):
     # store and update redis timestamps for each user
@@ -1168,6 +1132,6 @@ if __name__ == "__main__":
         target=poll_remove_user_data, args=(redis_client,), daemon=True
     )
     x.start()
-    server.run(
+    app.run(
         debug=False, host=config["app"]["flask_host"], port=config["app"]["flask_port"]
     )

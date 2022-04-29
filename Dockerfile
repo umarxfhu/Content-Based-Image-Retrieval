@@ -1,4 +1,4 @@
-FROM python:3.9
+FROM tiangolo/uwsgi-nginx-flask:python3.9
 
 # Set the working directory inside the container
 WORKDIR /app
