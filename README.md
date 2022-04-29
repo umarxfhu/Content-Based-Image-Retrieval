@@ -1,18 +1,20 @@
 # Dataset Clustering Dashboard
 
-The `src` folder contains code for a Dash web-app that allows (multiple) user to upload a folder containing images that has been zipped (.zip) to generate 3D and 2D UMAP visualisations of the clusters formed from the images of your dataset.
+A Dockerized Python web-app for image dataset clustering and exploration. Built using Dash by Plotly and accelerated with Redis.
+
+The `src` folder contains code for a Dash webapp that allows (multiple) user to upload a folder containing images that has been zipped (.zip) to generate 3D and 2D UMAP visualisations of the clusters formed by HDBSCAN from the images of your dataset.
 
 ## To run the dashboard on a server, Docker and docker-compose must be installed on the host (server) computer, then execute the following commands:
 - Once you have cloned this repository, `cd` into it.
 - Next run `docker-compose build` (add `sudo` to the beginning of this/any following Docker commands if needed).
 - Finally run `docker-compose run api`
-- The terminal will now display a URL that can be accessed in a browser.
-- If your connection fails in the browser check `config.py` to ensure the ports used are available on your computer.
+- The terminal will now display a URL where the dashboard can be accessed in a browser.
+- If your connection fails in the browser check `config.py` and `docker-compose.yml` to ensure the ports being used are available on your computer.
 - To stop the app press `ctrl+C` on your keyboard.
 - To bring the container down run `docker-compose down`
 
 ## To run without docker, create a new virtual environment and update pip.
-  1. `python3 -m dashEnv ~/venv/testenv` 
+  1. `python3 -m dashEnv ~/venv/testenv` (where `dashEnv` is the name you choose to give the virtual environment).
   2. `source ~/venv/dashEnv/bin/activate`
   3. `pip install -U pip`
 - Next install dependencies from the provided requirements.txt file:
@@ -30,16 +32,16 @@ A folder of images (I tested datasets with ~150 to ~20k images within sizes of ~
 ### Expected directory structure for your uploaded `yourDatasetsName.zip` file when extracted:
 ```
 yourDatasetsName
-└───image1.jpg
-└───image2.jpg
+└───image_1.jpg
+└───image_2.jpg
 └───.
 └───.
-└───imageN.jpg
+└───image_N.jpg
 ```
-  - Images could also be of the following formats `.jpg`, `.jpeg`, `.png`, `.bmp`, ``
+  - Image filenames are arbitrary but should be unique (do not include any subfolders), and could be of the following formats `.jpg`, `.jpeg`, `.png`, `.bmp`.
 ### Oh no! The second/third etc. dataset I upload sometimes fails!?
 - The upload component used is from https://github.com/np-8/dash-uploader and sometimes it fails with larger uploads.
-- If this happens you could try to reupload which works sometimes, if not close the current window you are using the dashboard in and reopen it to start a new session (a fix is in progress).
+- If this happens you could try to reupload which works sometimes, if not close the current window you are using the dashboard in and reopen it to start a new session (a better fix is in progress).
 
 [Deprecated] The CBIR notebook (backend algo testing) allows you to:
 - Download a kaggle dataset (e.g. caltech256).
